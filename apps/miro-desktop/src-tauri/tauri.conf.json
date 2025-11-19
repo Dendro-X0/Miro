@@ -1,0 +1,28 @@
+{
+  "build": {
+    "beforeDevCommand": "pnpm dev --filter miro-web",
+    "beforeBuildCommand": "pnpm build --filter miro-web",
+    "devPath": "http://localhost:3000",
+    "distDir": "../miro-web/.next"
+  },
+  "package": {
+    "productName": "Miro Desktop",
+    "version": "0.1.0"
+  },
+  "tauri": {
+    "bundle": {
+      "identifier": "com.miro.desktop"
+    },
+    "security": {
+      "csp": null
+    },
+    "windows": [
+      {
+        "title": "Miro",
+        "width": 1280,
+        "height": 800,
+        "resizable": true
+      }
+    ]
+  }
+}
