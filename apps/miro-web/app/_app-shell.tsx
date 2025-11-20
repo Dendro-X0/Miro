@@ -1,11 +1,20 @@
 "use client";
 
-import type { ChangeEvent, FormEvent, KeyboardEvent, MutableRefObject, ReactElement, ReactNode } from "react";
+import type { MutableRefObject, ReactElement, ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
-import { AlertCircle, ArrowUpCircle, ChevronDown, Loader2, Menu, Mic, Settings, Sparkles } from "lucide-react";
+import { AlertCircle, Menu, MessageCircle, Settings } from "lucide-react";
 import ThemeToggle from "./_theme-toggle";
-import SettingsView from "./_settings-view";
+import SettingsView from "./settings/settings-view";
 import { useSettings } from "./_settings-store";
+import type { AiCustomModel, AiModelFilterTag } from "./_settings-store";
+import type { MainView, ModelSwitcherOption, SidebarChatSummary } from "./shell/types";
+import SidebarContent from "./shell/sidebar";
+import ModelSwitcher from "./shell/model-switcher";
+import ChatInputBar from "./shell/chat-input";
+import PlaceholderView from "./shell/placeholder-view";
+import SampleMessages from "./shell/sample-messages";
+import UiKickerLabel from "./ui/kicker-label";
+import aiModelConfig from "./settings/ai-model-presets";
 
 interface AppShellProps {
   readonly children?: ReactNode;
@@ -35,39 +44,83 @@ interface AiChatResponseBody {
   readonly completion: BackendChatCompletion;
 }
 
-interface ChatInputBarProps {
-  readonly onSend: (content: string) => Promise<void> | void;
-  readonly sending: boolean;
+interface BackendImageResult {
+	readonly url: string;
 }
 
-interface ModelSwitcherProps {
-  readonly value: string;
-  readonly onChange: (value: string) => void;
-  readonly ready?: boolean;
+interface AiImageResponseBody {
+	readonly images: readonly BackendImageResult[];
 }
 
-type MainView = "today" | "settings";
-
-interface SidebarContentProps {
-  readonly workspaceName: string;
+interface AiConfigReadyResponse {
+  readonly ready: boolean;
 }
 
-const defaultModelId: string = "balanced";
+interface ChatSession {
+  readonly id: string;
+  readonly messages: readonly UiChatMessage[];
+  readonly pinned: boolean;
+  readonly titleOverride?: string;
+}
+
+interface ChatState {
+  readonly sessions: readonly ChatSession[];
+  readonly activeId: string;
+}
+
+const maxChatSessions: number = 10;
+
+const defaultModelId: string = "gemini-2.5-flash";
 const defaultApiBaseUrl: string = process.env.NEXT_PUBLIC_MIRO_API_BASE_URL ?? "http://localhost:8787";
 const systemPrompt: string = "You are the Miro workspace assistant.";
-const maxTextareaHeightPx: number = 160;
 
 /** High-level application shell with sidebar, chat area, and theming. */
 export default function AppShell(props: AppShellProps): ReactElement {
   const { children } = props;
-  const [model, setModel] = useState<string>(defaultModelId);
-  const [messages, setMessages] = useState<readonly UiChatMessage[]>([]);
+  const [chatState, setChatState] = useState<ChatState>(() => createInitialChatState());
   const [sending, setSending] = useState<boolean>(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<MainView>("today");
   const { settings, updateSettings, resetSettings } = useSettings();
+  const modelId: string = settings.aiView.selectedModelId || defaultModelId;
+  const byokKey: string = settings.aiView.byokKey;
+  const imageModelId: string = settings.aiView.selectedImageModelId;
+  const [aiReady, setAiReady] = useState<boolean | null>(null);
+  const headerModelOptions: readonly ModelSwitcherOption[] = buildHeaderModelOptions({
+    showModelIds: settings.aiView.showModelIds,
+    showProviderDetails: settings.aiView.showProviderDetails,
+    customModels: settings.aiView.customModels,
+  });
   const scrollContainerRef: MutableRefObject<HTMLDivElement | null> = useRef<HTMLDivElement | null>(null);
+  const activeSession: ChatSession | undefined = findActiveChatSession(chatState.sessions, chatState.activeId);
+  const messages: readonly UiChatMessage[] = activeSession?.messages ?? [];
+  const sortedSessions: ChatSession[] = [...chatState.sessions].sort(
+    (first: ChatSession, second: ChatSession): number => {
+      if (first.pinned !== second.pinned) {
+        return first.pinned ? -1 : 1;
+      }
+
+      const firstActivity: number = getChatLastActivityTimestamp(first);
+      const secondActivity: number = getChatLastActivityTimestamp(second);
+      if (firstActivity === secondActivity) {
+        return 0;
+      }
+      return secondActivity - firstActivity;
+    },
+  );
+  const sidebarChats: readonly SidebarChatSummary[] = sortedSessions.map(
+    (session: ChatSession): SidebarChatSummary => ({
+      id: session.id,
+      title: getSessionTitle(session),
+      pinned: session.pinned,
+    }),
+  );
+
+  function handleChangeView(nextView: MainView): void {
+    setView(nextView);
+    setMobileSidebarOpen(false);
+  }
 
   function handleOpenMobileSidebar(): void {
     setMobileSidebarOpen(true);
@@ -79,8 +132,113 @@ export default function AppShell(props: AppShellProps): ReactElement {
 
   function handleToggleSettingsView(): void {
     const nextView: MainView = view === "settings" ? "today" : "settings";
-    setView(nextView);
-    setMobileSidebarOpen(false);
+    handleChangeView(nextView);
+  }
+
+  function handleChangeModel(nextModelId: string): void {
+    updateSettings({ aiView: { selectedModelId: nextModelId } });
+  }
+
+  function handleChangeImageModel(nextModelId: string): void {
+    updateSettings({ aiView: { selectedImageModelId: nextModelId } });
+  }
+
+  function handleSelectChatSession(chatId: string): void {
+    if (chatId === chatState.activeId) {
+      return;
+    }
+    setChatState((previous: ChatState): ChatState => {
+      const exists: boolean = previous.sessions.some((session: ChatSession): boolean => session.id === chatId);
+      if (!exists) {
+        return previous;
+      }
+      return {
+        sessions: previous.sessions,
+        activeId: chatId,
+      };
+    });
+    setError(null);
+    setSending(false);
+  }
+
+  function handleTogglePinChatSession(chatId: string): void {
+    setChatState((previous: ChatState): ChatState => {
+      const nextSessions: ChatSession[] = previous.sessions.map((session: ChatSession): ChatSession => {
+        if (session.id !== chatId) {
+          return session;
+        }
+        const pinned: boolean = !session.pinned;
+        const nextSession: ChatSession = {
+          ...session,
+          pinned,
+        };
+        return nextSession;
+      });
+      const nextState: ChatState = {
+        sessions: nextSessions,
+        activeId: previous.activeId,
+      };
+      return nextState;
+    });
+  }
+
+  function handleRenameChatSession(chatId: string, nextTitle: string): void {
+    const trimmed: string = nextTitle.trim();
+    setChatState((previous: ChatState): ChatState => {
+      const nextSessions: ChatSession[] = previous.sessions.map((session: ChatSession): ChatSession => {
+        if (session.id !== chatId) {
+          return session;
+        }
+        const titleOverride: string | undefined = trimmed ? trimmed : undefined;
+        const nextSession: ChatSession = {
+          ...session,
+          titleOverride,
+        };
+        return nextSession;
+      });
+      const nextState: ChatState = {
+        sessions: nextSessions,
+        activeId: previous.activeId,
+      };
+      return nextState;
+    });
+  }
+
+  function handleDeleteChatSession(chatId: string): void {
+    setChatState((previous: ChatState): ChatState => {
+      const remaining: ChatSession[] = previous.sessions.filter((session: ChatSession): boolean => session.id !== chatId);
+      if (remaining.length === 0) {
+        const state: ChatState = createInitialChatState();
+        return state;
+      }
+      const nextActiveId: string = previous.activeId === chatId ? remaining[0].id : previous.activeId;
+      const nextState: ChatState = {
+        sessions: remaining,
+        activeId: nextActiveId,
+      };
+      return nextState;
+    });
+    setError(null);
+    setSending(false);
+  }
+
+  function handleNewChatSession(): void {
+    setChatState((previous: ChatState): ChatState => {
+      const nextId: string = createChatSessionId();
+      const nextSession: ChatSession = {
+        id: nextId,
+        messages: [],
+        pinned: false,
+      };
+      const merged: ChatSession[] = [nextSession, ...previous.sessions];
+      const limited: ChatSession[] = merged.slice(0, maxChatSessions);
+      return {
+        sessions: limited,
+        activeId: nextId,
+      };
+    });
+    setError(null);
+    setSending(false);
   }
 
   async function handleSendMessage(content: string): Promise<void> {
@@ -96,16 +254,19 @@ export default function AppShell(props: AppShellProps): ReactElement {
       role: "user",
       content: trimmed,
     };
-    const nextMessages: readonly UiChatMessage[] = [...messages, userMessage];
-    setMessages(nextMessages);
+    const baseMessages: readonly UiChatMessage[] = messages;
+    const nextMessages: readonly UiChatMessage[] = [...baseMessages, userMessage];
+    setChatState((previous: ChatState): ChatState => updateActiveSessionMessages(previous, nextMessages));
     setError(null);
     setSending(true);
     try {
       const backendMessages: readonly BackendChatMessage[] = buildBackendMessages(nextMessages);
-      const response: Response = await fetch(`${defaultApiBaseUrl}/ai/chat`, {
+      const response: Response = await fetch(`${defaultApiBaseUrl}/v2/ai/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: backendMessages, model }),
+        body: JSON.stringify(
+          buildChatRequestBody({ messages: backendMessages, modelId, byokKey }),
+        ),
       });
       if (!response.ok) {
         setError("Unable to reach Miro right now. Please try again in a moment.");
@@ -123,9 +284,61 @@ export default function AppShell(props: AppShellProps): ReactElement {
         role: "assistant",
         content: assistantContent,
       };
-      setMessages([...nextMessages, assistantMessage]);
+      const finalMessages: readonly UiChatMessage[] = [...nextMessages, assistantMessage];
+      setChatState((previous: ChatState): ChatState => updateActiveSessionMessages(previous, finalMessages));
     } catch {
       setError("Something went wrong while talking to Miro. Check your connection and try again.");
+      return;
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function handleGenerateImage(prompt: string): Promise<void> {
+    if (sending) {
+      return;
+    }
+    const trimmed: string = prompt.trim();
+    if (!trimmed) {
+      return;
+    }
+    const userMessage: UiChatMessage = {
+      id: `user-${Date.now().toString(10)}`,
+      role: "user",
+      content: trimmed,
+    };
+    const nextMessages: readonly UiChatMessage[] = [...messages, userMessage];
+    setChatState((previous: ChatState): ChatState => updateActiveSessionMessages(previous, nextMessages));
+    setError(null);
+    setSending(true);
+    try {
+      const response: Response = await fetch(`${defaultApiBaseUrl}/v2/ai/image`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          buildImageRequestBody({ prompt: trimmed, byokKey, modelId: imageModelId }),
+        ),
+      });
+      if (!response.ok) {
+        setError("Unable to reach Miro right now. Please try again in a moment.");
+        return;
+      }
+      const body: AiImageResponseBody = (await response.json()) as AiImageResponseBody;
+      const firstImage: BackendImageResult | undefined = body.images[0];
+      const imageUrl: string | undefined = firstImage?.url;
+      if (!imageUrl) {
+        setError("Received an empty image response from Miro. Please try again.");
+        return;
+      }
+      const assistantMessage: UiChatMessage = {
+        id: `assistant-${Date.now().toString(10)}`,
+        role: "assistant",
+        content: `Generated image: ${imageUrl}`,
+      };
+      const finalMessages: readonly UiChatMessage[] = [...nextMessages, assistantMessage];
+      setChatState((previous: ChatState): ChatState => updateActiveSessionMessages(previous, finalMessages));
+    } catch {
+      setError("Something went wrong while generating an image. Check your connection and try again.");
       return;
     } finally {
       setSending(false);
@@ -144,10 +357,12 @@ export default function AppShell(props: AppShellProps): ReactElement {
     setSending(true);
     try {
       const backendMessages: readonly BackendChatMessage[] = buildBackendMessages(activeMessages);
-      const response: Response = await fetch(`${defaultApiBaseUrl}/ai/chat`, {
+      const response: Response = await fetch(`${defaultApiBaseUrl}/v2/ai/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: backendMessages, model }),
+        body: JSON.stringify(
+          buildChatRequestBody({ messages: backendMessages, modelId, byokKey }),
+        ),
       });
       if (!response.ok) {
         setError("Unable to reach Miro right now. Please try again in a moment.");
@@ -165,7 +380,8 @@ export default function AppShell(props: AppShellProps): ReactElement {
         role: "assistant",
         content: assistantContent,
       };
-      setMessages([...activeMessages, assistantMessage]);
+      const finalMessages: readonly UiChatMessage[] = [...activeMessages, assistantMessage];
+      setChatState((previous: ChatState): ChatState => updateActiveSessionMessages(previous, finalMessages));
     } catch {
       setError("Something went wrong while talking to Miro. Check your connection and try again.");
       return;
@@ -177,6 +393,48 @@ export default function AppShell(props: AppShellProps): ReactElement {
   function handleDismissError(): void {
     setError(null);
   }
+
+  function handleFocusChatInput(): void {
+    const container: HTMLDivElement | null = scrollContainerRef.current;
+    if (!container) {
+      return;
+    }
+    container.scrollTo({ top: container.scrollHeight, behavior: "auto" });
+  }
+
+  function handleSelectSamplePrompt(prompt: string): void {
+    void handleSendMessage(prompt);
+  }
+
+  useEffect((): (() => void) => {
+    let active: boolean = true;
+    async function loadAiReady(): Promise<void> {
+      try {
+        const response: Response = await fetch(`${defaultApiBaseUrl}/ai/config`);
+        if (!response.ok) {
+          if (!active) {
+            return;
+          }
+          setAiReady(null);
+          return;
+        }
+        const body: AiConfigReadyResponse = (await response.json()) as AiConfigReadyResponse;
+        if (!active) {
+          return;
+        }
+        setAiReady(body.ready);
+      } catch {
+        if (!active) {
+          return;
+        }
+        setAiReady(null);
+      }
+    }
+    void loadAiReady();
+    return (): void => {
+      active = false;
+    };
+  }, []);
 
   useEffect((): void => {
     const container: HTMLDivElement | null = scrollContainerRef.current;
@@ -190,6 +448,13 @@ export default function AppShell(props: AppShellProps): ReactElement {
     container.scrollTo({ top: container.scrollHeight, behavior });
   }, [messages, sending]);
 
+  useEffect((): void => {
+    if (process.env.NODE_ENV !== "development") {
+      return;
+    }
+    clearDevServiceWorkersAndCaches();
+  }, []);
+
   const hasMessages: boolean = messages.length > 0;
   const topic: string = getCurrentTopic(messages);
 
@@ -197,10 +462,21 @@ export default function AppShell(props: AppShellProps): ReactElement {
     <div className="miro-gradient-shell min-h-screen text-foreground">
       <div className="flex min-h-screen w-full max-w-full gap-0 px-0 py-0 md:gap-4 md:px-4 md:py-4 lg:px-6 xl:px-10">
         <aside className="hidden w-64 flex-col rounded-none surface-panel-muted p-4 backdrop-blur md:rounded-3xl lg:flex">
-          <SidebarContent workspaceName={settings.profile.workspaceName} />
+          <SidebarContent
+            workspaceName={settings.profile.workspaceName}
+            view={view}
+            onChangeView={handleChangeView}
+            chats={sidebarChats}
+            activeChatId={chatState.activeId}
+            onSelectChat={handleSelectChatSession}
+            onNewChat={handleNewChatSession}
+            onTogglePinChat={handleTogglePinChatSession}
+            onRenameChat={handleRenameChatSession}
+            onDeleteChat={handleDeleteChatSession}
+          />
         </aside>
         <main className="flex w-full max-w-full flex-1 flex-col rounded-none surface-panel p-2 md:rounded-3xl md:p-4 backdrop-blur">
-          <header className="mb-3 flex items-center justify-between gap-3">
+          <header className="relative z-20 mb-3 flex items-center justify-between gap-3">
             <div className="flex items-center gap-2">
               <button
                 type="button"
@@ -213,15 +489,31 @@ export default function AppShell(props: AppShellProps): ReactElement {
               <div className="hidden flex-col md:flex">
                 <span className="text-xs font-semibold uppercase tracking-[0.16em] text-sky-400">Miro</span>
                 <h1 className="text-lg font-semibold text-foreground">
-                  {view === "settings" ? "Settings" : topic}
+                  {getMainViewTitle(view, topic)}
                 </h1>
               </div>
               <div className="flex items-center md:hidden">
-                <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-sky-400">Topic</span>
+                <span className="mr-1.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-surface-panel-muted/70 text-sky-300">
+                  <MessageCircle className="h-3 w-3" aria-hidden="true" />
+                </span>
+                <UiKickerLabel text="Topic" />
               </div>
             </div>
             <div className="flex items-center gap-2 sm:gap-3">
-              <ModelSwitcher value={model} onChange={setModel} />
+              <ModelSwitcher
+                value={modelId}
+                onChange={handleChangeModel}
+                imageModelId={imageModelId}
+                onChangeImageModel={handleChangeImageModel}
+                options={headerModelOptions}
+                ready={aiReady === null ? undefined : aiReady}
+              />
+              <div className="sm:hidden">
+                <ThemeToggle compact />
+              </div>
+              <div className="hidden sm:block">
+                <ThemeToggle />
+              </div>
               <button
                 type="button"
                 onClick={handleToggleSettingsView}
@@ -230,33 +522,70 @@ export default function AppShell(props: AppShellProps): ReactElement {
               >
                 <Settings className="h-4 w-4" aria-hidden="true" />
               </button>
-              <div className="sm:hidden">
-                <ThemeToggle compact />
-              </div>
-              <div className="hidden sm:block">
-                <ThemeToggle />
-              </div>
             </div>
           </header>
           {view === "today" && (
             <section className="flex min-h-0 flex-1 flex-col gap-3 pb-4" aria-label="Chat">
               <div
                 ref={scrollContainerRef}
-                className="flex-1 space-y-3 overflow-y-auto pr-1 chat-scroll-touch"
+                className="flex-1 space-y-3 overflow-y-auto pr-1 pt-1 pb-3 chat-scroll-touch"
                 role="log"
                 aria-live="polite"
                 aria-relevant="additions"
               >
-                {!hasMessages && (children ?? <SampleMessages />)}
+                {!hasMessages && (children ?? <SampleMessages onExampleClick={handleSelectSamplePrompt} />)}
                 {messages.map((message) => {
                   const isUser: boolean = message.role === "user";
                   const alignment: string = isUser ? "justify-end" : "justify-start";
                   const bubbleClass: string = isUser
-                    ? "chat-bubble-enter bg-sky-500/90 text-slate-950"
-                    : "chat-bubble-enter surface-bubble-muted text-foreground";
+                    ? "chat-bubble-enter bg-sky-500/90 text-slate-950 shadow-md"
+                    : "chat-bubble-enter surface-bubble-muted text-foreground border border-surface shadow-sm";
+                  const imageUrl: string | null = !isUser
+                    ? getImageUrlFromMessageContent(message.content)
+                    : null;
+                  if (imageUrl) {
+                    return (
+                      <div key={message.id} className={`flex ${alignment}`}>
+                        <div className={`max-w-[75%] rounded-2xl px-3 py-2 text-sm leading-relaxed ${bubbleClass}`}>
+                          <div className="flex flex-col gap-2">
+                            <p className="text-xs text-muted-foreground">Generated image</p>
+                            <a
+                              href={imageUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="group block overflow-hidden rounded-xl border border-surface bg-surface"
+                            >
+                              <img
+                                src={imageUrl}
+                                alt="Generated image"
+                                className="h-auto max-h-64 w-full object-contain transition-opacity group-hover:opacity-95"
+                              />
+                            </a>
+                            <div className="flex justify-end gap-2 text-[11px] text-muted-foreground">
+                              <a
+                                href={imageUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="underline-offset-2 hover:underline"
+                              >
+                                Open image
+                              </a>
+                              <button
+                                type="button"
+                                onClick={(): void => handleCopyImageUrl(imageUrl)}
+                                className="rounded-full bg-surface px-2 py-0.5 text-[11px] font-medium text-foreground hover:border-sky-400/60 hover:text-sky-200"
+                              >
+                                Copy link
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }
                   return (
                     <div key={message.id} className={`flex ${alignment}`}>
-                      <div className={`max-w-[75%] rounded-2xl px-3 py-2 text-sm ${bubbleClass}`}>
+                      <div className={`max-w-[75%] rounded-2xl px-3 py-2 text-sm leading-relaxed ${bubbleClass}`}>
                         <p>{message.content}</p>
                       </div>
                     </div>
@@ -298,8 +627,25 @@ export default function AppShell(props: AppShellProps): ReactElement {
                   </div>
                 </div>
               )}
-              <ChatInputBar onSend={handleSendMessage} sending={sending} />
+              <ChatInputBar
+                onSend={handleSendMessage}
+                onGenerateImage={handleGenerateImage}
+                sending={sending}
+                onFocus={handleFocusChatInput}
+              />
             </section>
+          )}
+          {view === "projects" && (
+            <PlaceholderView
+              title="Projects"
+              description="Projects view is coming soon. For now, ask Miro to help you plan or summarize projects in the chat."
+            />
+          )}
+          {view === "activity" && (
+            <PlaceholderView
+              title="Activity"
+              description="Activity view is coming soon. You can still ask Miro about what has been happening in your workspace."
+            />
           )}
           {view === "settings" && (
             <SettingsView settings={settings} onUpdate={updateSettings} onReset={resetSettings} />
@@ -315,7 +661,18 @@ export default function AppShell(props: AppShellProps): ReactElement {
             onClick={handleCloseMobileSidebar}
           />
           <div className="relative ml-auto flex h-full w-72 max-w-[80%] flex-col rounded-l-3xl surface-panel-muted p-4 backdrop-blur sidebar-slide-in">
-            <SidebarContent workspaceName={settings.profile.workspaceName} />
+            <SidebarContent
+              workspaceName={settings.profile.workspaceName}
+              view={view}
+              onChangeView={handleChangeView}
+              chats={sidebarChats}
+              activeChatId={chatState.activeId}
+              onSelectChat={handleSelectChatSession}
+              onNewChat={handleNewChatSession}
+              onTogglePinChat={handleTogglePinChatSession}
+              onRenameChat={handleRenameChatSession}
+              onDeleteChat={handleDeleteChatSession}
+            />
           </div>
         </div>
       )}
@@ -323,212 +680,153 @@ export default function AppShell(props: AppShellProps): ReactElement {
   );
 }
 
-function ModelSwitcher(props: ModelSwitcherProps): ReactElement {
-  const { value, onChange, ready } = props;
-  const [open, setOpen] = useState<boolean>(false);
-
-  const options: readonly { readonly id: string; readonly label: string }[] = [
-    { id: "fast", label: "Fast" },
-    { id: "balanced", label: "Balanced" },
-    { id: "creative", label: "Creative" },
-  ];
-
-  const current = options.find((option) => option.id === value) ?? options[1];
-
-  function handleToggle(): void {
-    setOpen((previous) => !previous);
+function clearDevServiceWorkersAndCaches(): void {
+  if (typeof window === "undefined" || typeof navigator === "undefined") {
+    return;
   }
-
-  function handleSelect(id: string): void {
-    onChange(id);
-    setOpen(false);
+  if ("serviceWorker" in navigator) {
+    void navigator.serviceWorker
+      .getRegistrations()
+      .then((registrations: readonly ServiceWorkerRegistration[]): void => {
+        registrations.forEach((registration: ServiceWorkerRegistration): void => {
+          void registration.unregister();
+        });
+      });
   }
-
-  return (
-    <div className="relative inline-flex items-center rounded-full border border-surface bg-surface-muted px-3 py-1.5 text-xs font-medium text-foreground shadow-lg backdrop-blur">
-      <button
-        type="button"
-        onClick={handleToggle}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        className="flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-muted"
-      >
-        <span className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">Model</span>
-        <span className="rounded-full bg-surface px-2 py-0.5 text-[11px] font-semibold text-foreground">
-          {current.label}
-        </span>
-        <ChevronDown
-          className={`h-3 w-3 transition-transform ${open ? "rotate-180" : ""}`}
-          aria-hidden="true"
-        />
-      </button>
-      {ready === false && (
-        <p className="ml-2 text-[10px] font-medium text-red-400">AI provider not connected</p>
-      )}
-      {open && (
-        <div
-          className="absolute right-0 top-full z-20 mt-2 w-40 rounded-2xl border-surface bg-surface text-xs shadow-lg"
-          role="listbox"
-          aria-label="Select model"
-        >
-          {options.map((option) => {
-            const active: boolean = option.id === value;
-            return (
-              <button
-                key={option.id}
-                type="button"
-                role="option"
-                aria-selected={active}
-                onClick={(): void => handleSelect(option.id)}
-                className={
-                  active
-                    ? "flex w-full items-center justify-between rounded-2xl bg-sky-500/10 px-3 py-2 text-foreground"
-                    : "flex w-full items-center justify-between rounded-2xl px-3 py-2 text-muted-foreground hover:bg-surface-muted"
-                }
-              >
-                <span>{option.label}</span>
-                {active && (
-                  <span className="h-1.5 w-1.5 rounded-full bg-sky-400" aria-hidden="true" />
-                )}
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
+  if ("caches" in window) {
+    void caches.keys().then((keys: readonly string[]): void => {
+      keys.forEach((key: string): void => {
+        void caches.delete(key);
+      });
+    });
+  }
 }
 
-function SampleMessages(): ReactElement {
-  return (
-    <div className="flex h-full items-center justify-center px-3 text-center">
-      <div className="relative w-full max-w-2xl">
-        <div
-          className="pointer-events-none absolute -inset-10 rounded-[40px] bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.22),_transparent_60%),radial-gradient(circle_at_bottom,_rgba(59,130,246,0.18),_transparent_65%)] opacity-80 blur-3xl dark:bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.35),_transparent_55%),radial-gradient(circle_at_bottom,_rgba(129,140,248,0.3),_transparent_70%)]"
-          aria-hidden="true"
-        />
-        <div className="relative overflow-hidden rounded-[26px] border border-surface bg-[radial-gradient(circle_at_top,_rgba(15,23,42,0.94),_rgba(15,23,42,0.88)),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.92),_rgba(15,23,42,0.9))] px-8 py-9 shadow-[0_0_60px_rgba(56,189,248,0.32)] backdrop-blur-xl dark:bg-[radial-gradient(circle_at_top,_rgba(15,23,42,0.98),_rgba(15,23,42,0.94)),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),_rgba(30,64,175,0.98))]">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-sky-400">
-            Welcome to your Miro workspace
-          </p>
-          <h2 className="mt-3 bg-gradient-to-r from-sky-500 via-cyan-300 to-violet-400 bg-clip-text text-3xl font-semibold leading-tight text-transparent dark:from-sky-300 dark:via-cyan-200 dark:to-violet-300">
-            Ask anything, just like in your favorite chat apps.
-          </h2>
-          <p className="mt-4 text-sm text-muted-foreground">
-            Use the box below to explore boards, plan projects, or get quick answers about what is happening
-            in your workspace.
-          </p>
-        </div>
-      </div>
-    </div>
-  );
+interface HeaderModelOptionsParams {
+  readonly showModelIds: boolean;
+  readonly showProviderDetails: boolean;
+  readonly customModels: readonly AiCustomModel[];
 }
 
-function ChatInputBar(props: ChatInputBarProps): ReactElement {
-  const { onSend, sending } = props;
-  const [value, setValue] = useState<string>("");
+interface HeaderModelProviderPreset {
+  readonly id: string;
+  readonly label: string;
+}
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>): void {
-    event.preventDefault();
-    sendCurrentValue();
+interface HeaderModelPreset {
+  readonly id: string;
+  readonly providerId: string;
+  readonly label: string;
+  readonly tags: readonly AiModelFilterTag[];
+}
+
+interface HeaderModelConfigShape {
+  readonly providers: readonly HeaderModelProviderPreset[];
+  readonly models: readonly HeaderModelPreset[];
+}
+
+function buildHeaderModelOptions(params: HeaderModelOptionsParams): readonly ModelSwitcherOption[] {
+  const config: HeaderModelConfigShape = aiModelConfig as HeaderModelConfigShape;
+  const providerLabelById: Record<string, string> = {};
+  for (const provider of config.providers) {
+    providerLabelById[provider.id] = provider.label;
   }
-
-  function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>): void {
-    if (event.key === "Enter" && !event.shiftKey) {
-      event.preventDefault();
-      sendCurrentValue();
+  const baseModels: HeaderModelPreset[] = [];
+  for (const model of config.models) {
+    baseModels.push(model);
+  }
+  const customModels: HeaderModelPreset[] = [];
+  for (const custom of params.customModels) {
+    const preset: HeaderModelPreset = {
+      id: custom.id,
+      providerId: custom.providerId,
+      label: custom.label,
+      tags: custom.tags,
+    };
+    customModels.push(preset);
+  }
+  const allModels: HeaderModelPreset[] = [...baseModels, ...customModels];
+  const seen: Set<string> = new Set<string>();
+  const options: ModelSwitcherOption[] = [];
+  for (const model of allModels) {
+    const key: string = `${model.providerId}:${model.id}`;
+    if (seen.has(key)) {
+      continue;
     }
+    seen.add(key);
+    const providerLabel: string = providerLabelById[model.providerId] ?? model.providerId;
+    const baseLabel: string = params.showModelIds ? model.id : model.label;
+    const label: string = params.showProviderDetails ? `${baseLabel} · ${providerLabel}` : baseLabel;
+    const option: ModelSwitcherOption = {
+      id: model.id,
+      label,
+      providerId: model.providerId,
+      providerLabel,
+      tags: model.tags,
+    };
+    options.push(option);
   }
-
-  function handleChange(event: ChangeEvent<HTMLTextAreaElement>): void {
-    const nextValue: string = event.target.value;
-    setValue(nextValue);
-    autoResizeTextarea(event.target);
+  if (options.length > 0) {
+    return options;
   }
-
-  function sendCurrentValue(): void {
-    const trimmed: string = value.trim();
-    if (!trimmed || sending) {
-      return;
-    }
-    onSend(trimmed);
-    setValue("");
-  }
-
-  const disableSend: boolean = sending || value.trim().length === 0;
-
-  return (
-    <form
-      onSubmit={handleSubmit}
-      aria-label="Chat input"
-      className="surface-panel bg-surface-muted flex items-center gap-3 rounded-2xl px-3 py-2 chat-input-safe shadow-[0_0_40px_rgba(56,189,248,0.25)]"
-    >
-      <p id="chat-input-help" className="sr-only">
-        Press Enter to send. Press Shift and Enter for a new line.
-      </p>
-      <button
-        type="button"
-        disabled={sending}
-        className="flex h-10 w-10 items-center justify-center rounded-2xl border border-surface bg-surface-muted text-foreground hover:border-sky-400/80 hover:text-sky-300 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-muted"
-      >
-        <Mic className="h-4 w-4" aria-hidden="true" />
-        <span className="sr-only">Start voice input</span>
-      </button>
-      <textarea
-        value={value}
-        onChange={handleChange}
-        onKeyDown={handleKeyDown}
-        rows={1}
-        placeholder="Ask Miro about your workspace..."
-        aria-label="Chat message"
-        aria-describedby="chat-input-help"
-        className="max-h-32 flex-1 resize-none overflow-y-auto bg-transparent py-2 text-sm text-foreground placeholder:text-slate-500 outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
-      />
-      <button
-        type="submit"
-        disabled={disableSend}
-        className="flex h-10 w-10 items-center justify-center rounded-2xl bg-sky-500 text-slate-950 shadow-lg hover:bg-sky-400 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-200 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900"
-      >
-        {sending ? (
-          <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-        ) : (
-          <ArrowUpCircle className="h-5 w-5" aria-hidden="true" />
-        )}
-        <span className="sr-only">Send message</span>
-      </button>
-    </form>
-  );
+  const fallbackOption: ModelSwitcherOption = {
+    id: defaultModelId,
+    label: params.showProviderDetails ? "Gemini 2.5 Flash · Google Gemini" : "Gemini 2.5 Flash",
+    providerId: "google",
+    providerLabel: "Google Gemini",
+    tags: ["text", "fast"],
+  };
+  return [fallbackOption];
 }
 
-function SidebarContent(props: SidebarContentProps): ReactElement {
-  const { workspaceName } = props;
-  return (
-    <>
-      <div className="mb-4 flex items-center gap-2">
-        <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-gradient-to-br from-sky-400 to-violet-500 text-slate-950">
-          <Sparkles className="h-4 w-4" aria-hidden="true" />
-        </div>
-        <div className="flex flex-col">
-          <span className="text-xs font-semibold uppercase tracking-wide text-foreground">Workspace</span>
-          <span className="text-sm font-semibold text-foreground">{workspaceName}</span>
-        </div>
-      </div>
-      <section className="flex flex-1 flex-col justify-between text-xs text-muted-foreground">
-        <div className="rounded-2xl surface-panel p-3">
-          <p className="mb-1 font-medium text-foreground">Try asking Miro to</p>
-          <ul className="space-y-1">
-            <li>Summarize what you worked on today.</li>
-            <li>Help draft a project brief or roadmap.</li>
-            <li>Brainstorm ideas for your next workshop.</li>
-          </ul>
-        </div>
-        <div className="mt-4 rounded-2xl surface-panel p-3 text-xs text-muted-foreground">
-          <p className="mb-1 font-medium text-foreground">Quick tip</p>
-          <p>Hold Shift + Enter for multi-line prompts. Press Enter to send.</p>
-        </div>
-      </section>
-    </>
-  );
+interface ChatRequestBodyParams {
+  readonly messages: readonly BackendChatMessage[];
+  readonly modelId: string;
+  readonly byokKey: string;
+}
+
+interface ChatRequestBody {
+  readonly messages: readonly BackendChatMessage[];
+  readonly model?: string;
+  readonly byokKey?: string;
+}
+
+function buildChatRequestBody(params: ChatRequestBodyParams): ChatRequestBody {
+  const trimmedByokKey: string = params.byokKey.trim();
+  const body: ChatRequestBody = {
+    messages: params.messages,
+    model: params.modelId,
+  };
+  if (trimmedByokKey.length > 0) {
+    return { ...body, byokKey: trimmedByokKey };
+  }
+  return body;
+}
+
+interface ImageRequestBodyParams {
+	readonly prompt: string;
+	readonly byokKey: string;
+	readonly modelId?: string;
+}
+
+interface ImageRequestBody {
+	readonly prompt: string;
+	readonly model?: string;
+	readonly byokKey?: string;
+}
+
+function buildImageRequestBody(params: ImageRequestBodyParams): ImageRequestBody {
+	const trimmedByokKey: string = params.byokKey.trim();
+	const trimmedModelId: string = params.modelId?.trim() ?? "";
+	const base: ImageRequestBody = {
+		prompt: params.prompt,
+	};
+	const withModel: ImageRequestBody =
+		trimmedModelId.length > 0 ? { ...base, model: trimmedModelId } : base;
+	if (trimmedByokKey.length > 0) {
+		return { ...withModel, byokKey: trimmedByokKey };
+	}
+	return withModel;
 }
 
 function buildBackendMessages(messages: readonly UiChatMessage[]): readonly BackendChatMessage[] {
@@ -538,6 +836,43 @@ function buildBackendMessages(messages: readonly UiChatMessage[]): readonly Back
     return { role, content: message.content };
   });
   return [systemMessage, ...chatMessages];
+}
+
+function getImageUrlFromMessageContent(content: string): string | null {
+  const prefix: string = "Generated image:";
+  if (!content.startsWith(prefix)) {
+    return null;
+  }
+  const rawUrl: string = content.slice(prefix.length).trim();
+  if (!rawUrl) {
+    return null;
+  }
+  try {
+    const validated: URL = new URL(rawUrl);
+    return validated.toString();
+  } catch {
+    return null;
+  }
+}
+
+function handleCopyImageUrl(url: string): void {
+  if (typeof navigator === "undefined" || !navigator.clipboard) {
+    return;
+  }
+  void navigator.clipboard.writeText(url);
+}
+
+function getMainViewTitle(view: MainView, topic: string): string {
+  if (view === "projects") {
+    return "Projects";
+  }
+  if (view === "activity") {
+    return "Activity";
+  }
+  if (view === "settings") {
+    return "Settings";
+  }
+  return topic;
 }
 
 function getCurrentTopic(messages: readonly UiChatMessage[]): string {
@@ -555,9 +890,75 @@ function getCurrentTopic(messages: readonly UiChatMessage[]): string {
   return `${normalized.slice(0, limit - 1)}…`;
 }
 
-function autoResizeTextarea(element: HTMLTextAreaElement): void {
-  const elementRef: HTMLTextAreaElement = element;
-  elementRef.style.height = "0px";
-  const nextHeight: number = Math.min(elementRef.scrollHeight, maxTextareaHeightPx);
-  elementRef.style.height = `${nextHeight}px`;
+function createInitialChatState(): ChatState {
+  const id: string = createChatSessionId();
+  const initialSession: ChatSession = { id, messages: [], pinned: false };
+  const initialState: ChatState = {
+    sessions: [initialSession],
+    activeId: id,
+  };
+  return initialState;
+}
+
+function createChatSessionId(): string {
+  const timestamp: string = Date.now().toString(10);
+  return `chat-${timestamp}`;
+}
+
+function findActiveChatSession(
+  sessions: readonly ChatSession[],
+  activeId: string,
+): ChatSession | undefined {
+  return sessions.find((session: ChatSession): boolean => session.id === activeId);
+}
+
+function updateActiveSessionMessages(previous: ChatState, nextMessages: readonly UiChatMessage[]): ChatState {
+  const updatedSessions: ChatSession[] = [];
+  for (const session of previous.sessions) {
+    if (session.id === previous.activeId) {
+      const updated: ChatSession = {
+        ...session,
+        messages: nextMessages,
+      };
+      updatedSessions.push(updated);
+    } else {
+      updatedSessions.push(session);
+    }
+  }
+  const nextState: ChatState = {
+    sessions: updatedSessions,
+    activeId: previous.activeId,
+  };
+  return nextState;
+}
+
+function getSessionTitle(session: ChatSession): string {
+  if (session.titleOverride && session.titleOverride.trim().length > 0) {
+    return session.titleOverride.trim();
+  }
+  return getCurrentTopic(session.messages);
+}
+
+function getChatLastActivityTimestamp(session: ChatSession): number {
+  const messages: readonly UiChatMessage[] = session.messages;
+  if (messages.length > 0) {
+    const lastMessage: UiChatMessage = messages[messages.length - 1];
+    const messageParts: string[] = lastMessage.id.split("-");
+    const rawMessageTimestamp: string | undefined = messageParts[1];
+    const parsedMessageTimestamp: number = rawMessageTimestamp
+      ? Number.parseInt(rawMessageTimestamp, 10)
+      : 0;
+    if (Number.isFinite(parsedMessageTimestamp)) {
+      return parsedMessageTimestamp;
+    }
+  }
+  const sessionParts: string[] = session.id.split("-");
+  const rawSessionTimestamp: string | undefined = sessionParts[1];
+  const parsedSessionTimestamp: number = rawSessionTimestamp
+    ? Number.parseInt(rawSessionTimestamp, 10)
+    : 0;
+  if (Number.isFinite(parsedSessionTimestamp)) {
+    return parsedSessionTimestamp;
+  }
+  return 0;
 }

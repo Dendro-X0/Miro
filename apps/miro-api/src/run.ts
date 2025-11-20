@@ -1,5 +1,5 @@
 import { serve } from "@hono/node-server";
-import type { AppInstance } from "./app";
+import type { AppInstance } from "./types";
 import { createApp } from "./app";
 import { getApiConfig } from "./config";
 

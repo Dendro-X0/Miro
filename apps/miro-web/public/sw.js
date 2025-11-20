@@ -1,4 +1,4 @@
-const CACHE_NAME = "miro-ai-shell-v1";
+const CACHE_NAME = "miro-ai-shell-v2";
 const SHELL_URLS = ["/"];
 
 self.addEventListener("install", (event) => {
@@ -31,6 +31,9 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   const request = event.request;
   if (request.method !== "GET") {
+    return;
+  }
+  if (request.mode === "navigate") {
     return;
   }
   event.respondWith(

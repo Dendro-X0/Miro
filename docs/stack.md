@@ -11,7 +11,7 @@ Miro builds on a TypeScript-first stack optimized for a modular, AI-enabled PWA.
 ## API
 
 - Hono (`apps/miro-api`) as a lightweight HTTP server
-- JSON endpoints for workspaces, documents, AI actions, and activity
+- JSON endpoints for AI chat and image generation, plus future workspace and activity APIs
 
 ## Authentication
 
@@ -25,8 +25,9 @@ Miro builds on a TypeScript-first stack optimized for a modular, AI-enabled PWA.
 ## AI
 
 - `@miro/ai` package as the integration layer to external AI providers
-  - Starts with a mock client
-  - Can later wrap OpenAI, Anthropic, or other models
+  - Includes a mock client for local development
+  - Wraps OpenAI-compatible providers and can be extended for Anthropic, Google, local, or other backends
+  - Powers `/v2/ai/chat`, `/v2/ai/complete`, and `/v2/ai/image` routes used by the PWA
 
 ## Tooling
 

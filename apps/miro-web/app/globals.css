@@ -1,12 +1,14 @@
 @import "tailwindcss";
+@config "../tailwind.config.js";
 
 :root {
   color-scheme: light;
-  --background: 210 40% 96%;
-  --foreground: 222 47% 12%;
+  /* Slightly brighter background with stronger card and border contrast */
+  --background: 210 40% 97%;
+  --foreground: 222 47% 14%;
   --surface: 0 0% 100%;
-  --surface-muted: 210 40% 96%;
-  --border: 215 18% 75%;
+  --surface-muted: 210 40% 90%;
+  --border: 215 22% 55%;
 }
 
 .dark {
@@ -47,7 +49,7 @@ body {
 }
 
 .text-muted-foreground {
-  color: hsl(var(--foreground) / 0.65);
+  color: hsl(var(--foreground) / 0.72);
 }
 
 .surface-panel {

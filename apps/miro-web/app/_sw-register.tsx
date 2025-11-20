@@ -8,6 +8,9 @@ const serviceWorkerPath: string = "/sw.js";
 /** Registers the PWA service worker once on the client. */
 export default function ServiceWorkerRegister(): ReactElement {
   useEffect((): void => {
+    if (process.env.NODE_ENV !== "production") {
+      return;
+    }
     if (typeof window === "undefined") {
       return;
     }

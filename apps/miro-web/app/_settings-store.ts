@@ -8,6 +8,7 @@ export type ThemePreference = "system" | "light" | "dark";
 export interface ProfileSettings {
   readonly displayName: string;
   readonly avatarColor: string;
+  readonly avatarImage: string;
   readonly workspaceName: string;
 }
 
@@ -17,9 +18,28 @@ export interface AppearanceSettings {
   readonly compactLayout: boolean;
 }
 
+export type AiModelFilterTag = "text" | "image" | "fast" | "quality" | "local";
+
+export interface AiCustomModel {
+  readonly id: string;
+  readonly providerId: string;
+  readonly label: string;
+  readonly description: string;
+  readonly tier: "default" | "fast" | "quality" | "local";
+  readonly tags: readonly AiModelFilterTag[];
+}
+
 export interface AiViewSettings {
   readonly showProviderDetails: boolean;
   readonly showModelIds: boolean;
+  readonly selectedProviderId: string;
+  readonly selectedModelId: string;
+  readonly selectedImageModelId: string;
+  readonly byokProvider: string | null;
+  readonly byokKey: string;
+  readonly byokLabel: string;
+  readonly modelFilterTag: AiModelFilterTag | null;
+  readonly customModels: readonly AiCustomModel[];
 }
 
 export interface DataSettings {
@@ -52,6 +72,7 @@ const STORAGE_KEY: string = "miro-settings-v1";
 const defaultProfile: ProfileSettings = {
   displayName: "Guest",
   avatarColor: "#0ea5e9",
+  avatarImage: "",
   workspaceName: "Miro Studio",
 };
 
@@ -64,6 +85,14 @@ const defaultAppearance: AppearanceSettings = {
 const defaultAiView: AiViewSettings = {
   showProviderDetails: true,
   showModelIds: false,
+  selectedProviderId: "google",
+  selectedModelId: "gemini-2.5-flash",
+  selectedImageModelId: "",
+  byokProvider: null,
+  byokKey: "",
+  byokLabel: "",
+  modelFilterTag: null,
+  customModels: [],
 };
 
 const defaultData: DataSettings = {
@@ -89,6 +118,22 @@ function mergeSection<TSection extends object>(
   return { ...fallback, ...previous, ...update } as TSection;
 }
 
+function normalizeAiViewSettings(value: AiViewSettings): AiViewSettings {
+  const legacyIds: readonly string[] = ["balanced", "fast"];
+  const hasLegacyModelId: boolean = legacyIds.includes(value.selectedModelId);
+  if (!hasLegacyModelId) {
+    return value;
+  }
+  const nextProviderId: string =
+    value.selectedProviderId === "openai-compatible" ? "google" : value.selectedProviderId;
+  const next: AiViewSettings = {
+    ...value,
+    selectedProviderId: nextProviderId,
+    selectedModelId: "gemini-2.5-flash",
+  };
+  return next;
+}
+
 function parseStoredSettings(raw: string | null): SettingsState | null {
   if (!raw) {
     return null;
@@ -109,11 +154,12 @@ function parseStoredSettings(raw: string | null): SettingsState | null {
       (record.appearance as Partial<AppearanceSettings> | undefined) ?? undefined,
       defaultAppearance,
     );
-    const aiViewValue: AiViewSettings = mergeSection(
+    const mergedAiViewValue: AiViewSettings = mergeSection(
       defaultAiView,
       (record.aiView as Partial<AiViewSettings> | undefined) ?? undefined,
       defaultAiView,
     );
+    const aiViewValue: AiViewSettings = normalizeAiViewSettings(mergedAiViewValue);
     const dataValue: DataSettings = mergeSection(
       defaultData,
       (record.data as Partial<DataSettings> | undefined) ?? undefined,

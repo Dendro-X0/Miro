@@ -1,18 +1,12 @@
 {
+  "identifier": "com.miro.desktop",
+  "productName": "Miro Desktop",
+  "version": "0.1.0",
   "build": {
-    "beforeDevCommand": "pnpm dev --filter miro-web",
-    "beforeBuildCommand": "pnpm build --filter miro-web",
-    "devPath": "http://localhost:3000",
-    "distDir": "../miro-web/.next"
+    "devUrl": "http://localhost:3000",
+    "frontendDist": "../miro-web/.next"
   },
-  "package": {
-    "productName": "Miro Desktop",
-    "version": "0.1.0"
-  },
-  "tauri": {
-    "bundle": {
-      "identifier": "com.miro.desktop"
-    },
+  "app": {
     "security": {
       "csp": null
     },
@@ -24,5 +18,9 @@
         "resizable": true
       }
     ]
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all"
   }
 }
