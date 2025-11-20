@@ -14,6 +14,10 @@ export default function RootLayout(props: RootLayoutProps): ReactElement {
       <head>
         <title>Miro AI Workspace</title>
         <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta
+          name="description"
+          content="Miro is a PWA-first AI workspace for chat, image generation, and collaborative work."
+        />
         <link rel="icon" href="/miro-icon.svg" type="image/svg+xml" />
         <link rel="manifest" href="/manifest.webmanifest" />
         <meta name="theme-color" content="#0ea5e9" />

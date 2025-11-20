@@ -8,10 +8,10 @@
   },
   "scripts": {
     "dev": "turbo dev",
-    "build": "turbo build",
-    "start": "turbo start",
-    "typecheck": "turbo run typecheck",
-    "lint": "turbo run lint",
+    "build": "turbo build --filter=@miro/api --filter=miro-web",
+    "start": "turbo start --filter=@miro/api --filter=miro-web",
+    "typecheck": "turbo run typecheck --filter=@miro/api --filter=miro-web",
+    "lint": "turbo run lint --filter=@miro/api --filter=miro-web",
     "clean": "turbo run clean"
   },
   "devDependencies": {

@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "tsx src/run.ts",
     "build": "tsc -p tsconfig.json",
-    "start": "node dist/run.js",
+    "start": "tsx src/run.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test:ai-config": "tsx test/ai-config.test.ts",
     "test:ai-helpers": "tsx test/ai-helpers.test.ts",

@@ -1,5 +1,6 @@
 import type { Context, Next } from "hono";
 import { Hono as HonoApp } from "hono";
+import { cors } from "hono/cors";
 import type { Db } from "@miro/db";
 import getDb, { schema } from "@miro/db";
 import type { AiClient, AiImageClient } from "@miro/ai";
@@ -74,6 +75,8 @@ function deriveAuthFromHeaders(request: Request): AuthInfo {
 
 export function createApp(): AppInstance {
   const app: AppInstance = new HonoApp<AppBindings>();
+
+  app.use("/*", cors());
 
   app.use("/*", async (context: Context<AppBindings>, next: Next): Promise<void> => {
     const headers: Headers = new Headers();
