@@ -2,13 +2,10 @@
 
 import type { ReactElement } from "react";
 import { useMemo, useState } from "react";
-import { ChevronDown, Image as ImageIcon, Sparkles } from "lucide-react";
 import type { ModelSwitcherOption, ModelSwitcherProps } from "./types";
 import type { AiModelFilterTag } from "../_settings-store";
 import UiKickerLabel from "../ui/kicker-label";
-import ModelSwitcherPanel from "../modules/ui/components/model/model-switcher-panel";
 import ModelSwitcherPanelMobile from "../modules/ui/components/model/model-switcher-panel-mobile";
-import useIsMobile from "../modules/ui/hooks/use-is-mobile";
 import type {
   ModelSwitcherPanelHandlers,
   ModelSwitcherPanelState,
@@ -53,9 +50,7 @@ function getProviderIcon(providerId: string): ReactElement | null {
     );
   }
   if (providerId === "google") {
-    return (
-      <img src="/logos/gemini.svg" alt="" className={logoClassName} aria-hidden="true" />
-    );
+    return <img src="/logos/gemini.svg" alt="" className={logoClassName} aria-hidden="true" />;
   }
   if (providerId === "local") {
     return (
@@ -78,16 +73,15 @@ function getProviderIcon(providerId: string): ReactElement | null {
   return null;
 }
 
-export default function ModelSwitcher(props: ModelSwitcherProps): ReactElement {
+export default function MobileModelSelector(props: ModelSwitcherProps): ReactElement {
   const { value, onChange, imageModelId, onChangeImageModel, options, ready } = props;
-  const { isMobile } = useIsMobile();
   const [open, setOpen] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [filtersOpen, setFiltersOpen] = useState<boolean>(false);
   const [providerFilterId, setProviderFilterId] = useState<string>("all");
   const [featureFilter, setFeatureFilter] = useState<AiModelFilterTag | "all">("all");
 
-  const providers = useMemo(
+  const providers: readonly { readonly id: string; readonly label: string }[] = useMemo(
     (): readonly { readonly id: string; readonly label: string }[] => {
       const seen: Set<string> = new Set<string>();
       const result: { readonly id: string; readonly label: string }[] = [];
@@ -152,6 +146,7 @@ export default function ModelSwitcher(props: ModelSwitcherProps): ReactElement {
     },
     [options, providerAndFeatureFilteredOptions, searchQuery],
   );
+
   const currentTextModel: ModelSwitcherOption | undefined =
     options.find((option: ModelSwitcherOption): boolean => option.id === value) ?? undefined;
   const currentImageModel: ModelSwitcherOption | undefined =
@@ -184,23 +179,8 @@ export default function ModelSwitcher(props: ModelSwitcherProps): ReactElement {
     ? getProviderIcon(providerForIcon.providerId)
     : null;
 
-  if (!currentTextModel && !currentImageModel && options.length === 0) {
-    return (
-      <div className="relative inline-flex items-center gap-2 rounded-full border border-surface bg-surface px-3.5 py-2 text-xs font-medium text-foreground shadow-lg backdrop-blur">
-        <UiKickerLabel text="Model" tone="muted" />
-        <span className="inline-flex items-center rounded-full bg-surface-muted px-2 py-0.5 text-[11px] font-semibold text-red-300">
-          Model not found
-        </span>
-      </div>
-    );
-  }
-
   function handleToggle(): void {
     setOpen((previous: boolean): boolean => !previous);
-  }
-
-  function handleToggleFilters(): void {
-    setFiltersOpen((previous: boolean): boolean => !previous);
   }
 
   function handleSelect(id: string): void {
@@ -241,69 +221,36 @@ export default function ModelSwitcher(props: ModelSwitcherProps): ReactElement {
   };
 
   const panelHandlers: ModelSwitcherPanelHandlers = {
-    onChangeSearch: (value: string): void => {
-      setSearchQuery(value);
+    onChangeSearch: (valueSearch: string): void => {
+      setSearchQuery(valueSearch);
     },
-    onToggleFilters: handleToggleFilters,
+    onToggleFilters: (): void => {
+      setFiltersOpen((previous: boolean): boolean => !previous);
+    },
     onSelectProvider: handleSelectProvider,
     onSelectFeature: handleSelectFeature,
     onSelectOption: handleSelect,
   };
 
+  const currentLabel: string = currentTextModel ? currentTextModel.label : "Choose a model";
+
   return (
-    <div
-      className={`relative inline-flex max-w-[min(16rem,100%)] shrink items-center rounded-full border border-surface bg-surface px-3.5 py-2 text-xs font-medium text-foreground shadow-lg backdrop-blur transition-colors sm:max-w-none sm:shrink-0 ${
-        open ? "border-sky-400/80 bg-surface-muted" : "hover:border-sky-400/80"
-      }`}
-    >
+    <div className="md:hidden">
       <button
         type="button"
         onClick={handleToggle}
-        aria-haspopup="listbox"
+        aria-haspopup="dialog"
         aria-expanded={open}
-        className="flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900"
+        aria-label={currentTextModel ? `Change model (${currentLabel})` : "Choose model"}
+        className="inline-flex h-9 items-center gap-2 rounded-full border border-surface bg-surface-muted px-3 text-[11px] text-foreground hover:border-sky-400/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
       >
         <UiKickerLabel text="Model" tone="muted" />
-        <span className="inline-flex items-center gap-2 rounded-full bg-surface-muted px-2 py-0.5 text-[11px] font-semibold text-foreground">
-          {currentProviderIcon && (
-            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-surface" aria-hidden="true">
-              {currentProviderIcon}
-            </span>
-          )}
-          <span className="hidden max-w-36 truncate sm:inline">
-            {currentTextModel ? currentTextModel.label : providerForIcon.label}
-          </span>
+        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-surface" aria-hidden="true">
+          {currentProviderIcon ?? <span className="h-2 w-2 rounded-full bg-sky-400" />}
         </span>
-        {currentImageModel && (
-          <span className="ml-1 hidden items-center gap-1 rounded-full bg-surface-muted px-2 py-0.5 text-[10px] text-emerald-200 sm:inline-flex">
-            <ImageIcon className="h-3 w-3" aria-hidden="true" />
-            <span className="hidden sm:inline">Image</span>
-          </span>
-        )}
-        <ChevronDown
-          className={`h-3 w-3 transition-transform ${open ? "rotate-180" : ""}`}
-          aria-hidden="true"
-        />
       </button>
-      {ready === false && (
-        <p className="ml-2 text-[10px] font-medium text-red-400">AI provider not connected</p>
-      )}
-      {isMobile ? (
+      {open && (
         <ModelSwitcherPanelMobile
-          state={panelState}
-          handlers={panelHandlers}
-          providers={providers}
-          featureOptions={featureOptions}
-          providerFilterId={providerFilterId}
-          featureFilter={featureFilter}
-          visibleOptions={visibleOptions}
-          value={value}
-          imageModelId={imageModelId}
-          getProviderIcon={getProviderIcon}
-          headerProviderIcon={currentProviderIcon}
-        />
-      ) : (
-        <ModelSwitcherPanel
           state={panelState}
           handlers={panelHandlers}
           providers={providers}

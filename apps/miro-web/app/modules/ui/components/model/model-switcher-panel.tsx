@@ -55,7 +55,7 @@ export default function ModelSwitcherPanel(props: ModelSwitcherPanelProps): Reac
   const { onChangeSearch, onToggleFilters, onSelectProvider, onSelectFeature, onSelectOption } = handlers;
   return (
     <div
-      className="model-switcher-panel fixed inset-x-3 top-20 bottom-28 z-40 mx-auto flex flex-col rounded-2xl bg-surface border border-surface text-xs shadow-xl ring-1 ring-slate-950/70 sm:absolute sm:inset-auto sm:left-auto sm:right-0 sm:top-full sm:bottom-auto sm:mt-2 sm:w-72 sm:mx-0 sm:flex-none"
+      className="model-switcher-panel absolute right-0 top-full z-40 mt-2 w-80 rounded-2xl border border-surface bg-surface text-xs shadow-xl ring-1 ring-slate-950/70"
       role="listbox"
       aria-label="Select model"
     >
@@ -86,6 +86,82 @@ export default function ModelSwitcherPanel(props: ModelSwitcherPanelProps): Reac
                 aria-hidden="true"
               />
             </button>
+            {filtersOpen && (
+              <div className="absolute right-full top-full z-50 mt-1 mr-2 hidden min-w-[11rem] rounded-xl border border-surface-muted bg-surface px-2 py-2 text-[11px] shadow-lg sm:block">
+                <p className="mb-1 px-1 text-[10px] font-semibold text-muted-foreground">Filter models</p>
+                <div className="space-y-1">
+                  <div className="flex flex-wrap gap-1">
+                    <PillButton
+                      variant="primary"
+                      size="xs"
+                      active={providerFilterId === "all"}
+                      onClick={(): void => onSelectProvider("all")}
+                      ariaPressed={providerFilterId === "all"}
+                    >
+                      <span aria-hidden="true">
+                        <Filter className="h-3 w-3" aria-hidden="true" />
+                      </span>
+                      <span>All providers</span>
+                    </PillButton>
+                    {providers.map(
+                      (
+                        provider: { readonly id: string; readonly label: string },
+                      ): ReactElement => {
+                        const active: boolean = provider.id === providerFilterId;
+                        return (
+                          <PillButton
+                            key={provider.id}
+                            variant="primary"
+                            size="xs"
+                            active={active}
+                            onClick={(): void => onSelectProvider(provider.id)}
+                            ariaPressed={active}
+                          >
+                            <span className="inline-flex items-center gap-1">
+                              {getProviderIcon(provider.id) && (
+                                <span
+                                  className="flex h-4 w-4 items-center justify-center rounded-full bg-surface"
+                                  aria-hidden="true"
+                                >
+                                  {getProviderIcon(provider.id)}
+                                </span>
+                              )}
+                              <span>{provider.label}</span>
+                            </span>
+                          </PillButton>
+                        );
+                      },
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    {featureOptions.map(
+                      (
+                        feature: { readonly id: AiModelFilterTag | "all"; readonly label: string },
+                      ): ReactElement => {
+                        const isActiveAll: boolean = feature.id === "all" && featureFilter === "all";
+                        const isActiveTag: boolean = feature.id !== "all" && feature.id === featureFilter;
+                        const active: boolean = isActiveAll || isActiveTag;
+                        return (
+                          <PillButton
+                            key={feature.id}
+                            variant="primary"
+                            size="xs"
+                            active={active}
+                            onClick={(): void => onSelectFeature(feature.id)}
+                            ariaPressed={active}
+                          >
+                            <span aria-hidden="true" className="mr-1 inline-flex h-4 w-4 items-center justify-center rounded-full bg-surface-muted">
+                              {getFeatureIcon(feature.id)}
+                            </span>
+                            <span>{feature.label}</span>
+                          </PillButton>
+                        );
+                      },
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
           <span className="hidden sm:inline">
             {providerSummaryLabel} · {featureSummaryLabel}

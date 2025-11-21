@@ -25,6 +25,7 @@ import type {
 } from "./shell/types";
 import SidebarContent from "./shell/sidebar";
 import ModelSwitcher from "./shell/model-switcher";
+import MobileModelSelector from "./shell/mobile-model-selector";
 import ChatInputBar from "./shell/chat-input";
 import PlaceholderView from "./shell/placeholder-view";
 import SampleMessages from "./shell/sample-messages";
@@ -659,14 +660,26 @@ export default function AppShell(props: AppShellProps): ReactElement {
               </div>
             </div>
             <div className="flex items-center gap-2 sm:gap-3">
-              <ModelSwitcher
-                value={modelId}
-                onChange={handleChangeModel}
-                imageModelId={imageModelId}
-                onChangeImageModel={handleChangeImageModel}
-                options={headerModelOptions}
-                ready={aiReady === null ? undefined : aiReady}
-              />
+              <div className="hidden md:block">
+                <ModelSwitcher
+                  value={modelId}
+                  onChange={handleChangeModel}
+                  imageModelId={imageModelId}
+                  onChangeImageModel={handleChangeImageModel}
+                  options={headerModelOptions}
+                  ready={aiReady === null ? undefined : aiReady}
+                />
+              </div>
+              <div className="md:hidden">
+                <MobileModelSelector
+                  value={modelId}
+                  onChange={handleChangeModel}
+                  imageModelId={imageModelId}
+                  onChangeImageModel={handleChangeImageModel}
+                  options={headerModelOptions}
+                  ready={aiReady === null ? undefined : aiReady}
+                />
+              </div>
               <div className="sm:hidden">
                 <ThemeToggle compact />
               </div>
