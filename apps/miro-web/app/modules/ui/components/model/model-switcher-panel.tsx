@@ -87,7 +87,7 @@ export default function ModelSwitcherPanel(props: ModelSwitcherPanelProps): Reac
               />
             </button>
             {filtersOpen && (
-              <div className="absolute right-full top-full z-50 mt-1 mr-2 hidden min-w-[11rem] rounded-xl border border-surface-muted bg-surface px-2 py-2 text-[11px] shadow-lg sm:block">
+              <div className="absolute right-full top-full z-50 mt-1 mr-2 hidden min-w-44 rounded-xl border border-surface-muted bg-surface px-2 py-2 text-[11px] shadow-lg sm:block">
                 <p className="mb-1 px-1 text-[10px] font-semibold text-muted-foreground">Filter models</p>
                 <div className="space-y-1">
                   <div className="flex flex-wrap gap-1">
