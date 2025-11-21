@@ -149,9 +149,9 @@ const aiModelConfig: AiModelConfig = {
       tags: ["image", "fast"],
     },
     {
-      id: "local-llama-3",
+      id: "local-llama-4",
       providerId: "local",
-      label: "LLaMA 3 local",
+      label: "LLaMA 4 local",
       description: "Example local model for on-premise setups.",
       tier: "local",
       tags: ["text", "local"],

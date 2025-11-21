@@ -109,32 +109,34 @@ export default function SettingsView(props: SettingsViewProps): ReactElement {
           </p>
         </div>
       </div>
-      <div className="mt-2 flex flex-wrap gap-3 text-sm md:text-base">
-        {settingsTabs.map((tab) => {
-          const active: boolean = tab.id === activeTab;
-          const icon: ReactElement = getSettingsTabIcon(tab.id);
-          return (
-            <PillButton
-              key={tab.id}
-              variant="surface"
-              size="sm"
-              active={active}
-              onClick={(): void => handleTabChange(tab.id)}
-              ariaCurrent={active ? "page" : undefined}
-            >
-              <span
-                className={
-                  active
-                    ? "mr-1.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-surface text-[11px] text-sky-500 dark:text-sky-200"
-                    : "mr-1.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-surface text-[11px] text-muted-foreground"
-                }
+      <div className="mt-2 -mx-1 overflow-x-auto pb-1 text-sm md:text-base">
+        <div className="flex min-w-max gap-3 px-1">
+          {settingsTabs.map((tab) => {
+            const active: boolean = tab.id === activeTab;
+            const icon: ReactElement = getSettingsTabIcon(tab.id);
+            return (
+              <PillButton
+                key={tab.id}
+                variant="surface"
+                size="sm"
+                active={active}
+                onClick={(): void => handleTabChange(tab.id)}
+                ariaCurrent={active ? "page" : undefined}
               >
-                {icon}
-              </span>
-              <span>{tab.label}</span>
-            </PillButton>
-          );
-        })}
+                <span
+                  className={
+                    active
+                      ? "mr-1.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-surface text-[11px] text-sky-500 dark:text-sky-200"
+                      : "mr-1.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-surface text-[11px] text-muted-foreground"
+                  }
+                >
+                  {icon}
+                </span>
+                <span>{tab.label}</span>
+              </PillButton>
+            );
+          })}
+        </div>
       </div>
       <div className="mt-2 flex flex-1 flex-col gap-3 border-t border-surface pt-3 text-sm">
         {activeTab === "aiKeys" && (

@@ -65,6 +65,7 @@ export default function SidebarContent(props: SidebarContentProps): ReactElement
   const [openChatMenuId, setOpenChatMenuId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState<string>("");
   const [renameOpenChatId, setRenameOpenChatId] = useState<string | null>(null);
+  const [showAllChats, setShowAllChats] = useState<boolean>(false);
   const trimmedQuery: string = chatSearchQuery.trim().toLowerCase();
   const filteredChats: readonly SidebarChatSummary[] = chats.filter(
     (chat: SidebarChatSummary): boolean => {
@@ -75,7 +76,11 @@ export default function SidebarContent(props: SidebarContentProps): ReactElement
       return normalizedTitle.includes(trimmedQuery);
     },
   );
-  const visibleChats: readonly SidebarChatSummary[] = filteredChats.slice(0, maxSidebarChats);
+  const baseChats: readonly SidebarChatSummary[] = filteredChats;
+  const visibleChats: readonly SidebarChatSummary[] = showAllChats
+    ? baseChats
+    : baseChats.slice(0, maxSidebarChats);
+  const hasMoreChats: boolean = baseChats.length > maxSidebarChats;
 
   function handleChangeChatSearch(event: ChangeEvent<HTMLInputElement>): void {
     setChatSearchQuery(event.target.value);
@@ -166,8 +171,9 @@ export default function SidebarContent(props: SidebarContentProps): ReactElement
                         />
                       </div>
                     </div>
-                    <ul className="mt-2 space-y-1">
-                      {visibleChats.map((chat: SidebarChatSummary) => {
+                    <div className="mt-2 max-h-64 overflow-y-auto pr-1 scroll-area chat-scroll-touch">
+                      <ul className="space-y-1">
+                        {visibleChats.map((chat: SidebarChatSummary) => {
                         const chatActive: boolean = chat.id === activeChatId;
                         const chatBaseClasses: string =
                           "flex w-full items-center justify-between rounded-2xl px-3 py-2 text-sm transition-colors";
@@ -282,7 +288,21 @@ export default function SidebarContent(props: SidebarContentProps): ReactElement
                           No chats match your search.
                         </li>
                       )}
-                    </ul>
+                      </ul>
+                    </div>
+                    {hasMoreChats && (
+                      <button
+                        type="button"
+                        onClick={(): void =>
+                          setShowAllChats((previous: boolean): boolean => !previous)
+                        }
+                        className="mt-1 w-full rounded-2xl px-3 py-1 text-[11px] text-center text-sky-300 hover:bg-surface-panel"
+                      >
+                        {showAllChats
+                          ? "Show fewer chats"
+                          : `Show more chats (${baseChats.length - maxSidebarChats} more)`}
+                      </button>
+                    )}
                   </div>
                 )}
               </li>

@@ -14,6 +14,7 @@ export interface SystemMessage extends ChatMessageBase {
 export interface UserMessage extends ChatMessageBase {
   readonly role: "user";
   readonly content: string;
+  readonly imageDataUrl?: string;
 }
 
 export interface AssistantMessage extends ChatMessageBase {
@@ -153,9 +154,25 @@ export function createMockAiClient(): AiClient {
   return { provider, generateCompletion };
 }
 
+interface OpenAiImageUrl {
+  readonly url: string;
+}
+
+interface OpenAiTextContentPart {
+  readonly type: "text";
+  readonly text: string;
+}
+
+interface OpenAiImageUrlContentPart {
+  readonly type: "image_url";
+  readonly image_url: OpenAiImageUrl;
+}
+
+type OpenAiContentPart = OpenAiTextContentPart | OpenAiImageUrlContentPart;
+
 interface OpenAiChatMessage {
   readonly role: "system" | "user" | "assistant";
-  readonly content: string;
+  readonly content: string | readonly OpenAiContentPart[];
 }
 
 interface OpenAiChatCompletionChoice {
@@ -188,16 +205,35 @@ function mapToOpenAiMessages(messages: readonly ChatMessage[]): readonly OpenAiC
   for (const message of messages) {
     if (message.role === "system") {
       const systemMessage: SystemMessage = message as SystemMessage;
-      result.push({ role: "system", content: systemMessage.content });
+      const systemItem: OpenAiChatMessage = { role: "system", content: systemMessage.content };
+      result.push(systemItem);
     } else if (message.role === "user") {
       const userMessage: UserMessage = message as UserMessage;
-      result.push({ role: "user", content: userMessage.content });
+      const content: string | readonly OpenAiContentPart[] = createOpenAiUserContent(userMessage);
+      const userItem: OpenAiChatMessage = { role: "user", content };
+      result.push(userItem);
     } else if (message.role === "assistant") {
       const assistantMessage: AssistantMessage = message as AssistantMessage;
-      result.push({ role: "assistant", content: assistantMessage.content });
+      const assistantItem: OpenAiChatMessage = {
+        role: "assistant",
+        content: assistantMessage.content,
+      };
+      result.push(assistantItem);
     }
   }
   return result;
+}
+
+function createOpenAiUserContent(message: UserMessage): string | readonly OpenAiContentPart[] {
+  const trimmedImageDataUrl: string = message.imageDataUrl?.trim() ?? "";
+  if (trimmedImageDataUrl.length === 0) {
+    return message.content;
+  }
+  const parts: OpenAiContentPart[] = [
+    { type: "text", text: message.content },
+    { type: "image_url", image_url: { url: trimmedImageDataUrl } },
+  ];
+  return parts;
 }
 
 function mapFromOpenAiResponse(body: OpenAiChatCompletionResponseBody): ChatCompletionResponse {

@@ -376,11 +376,11 @@ export default function AiKeysCard(props: AiKeysCardProps): ReactElement {
           <p className="text-xs text-muted-foreground">
             Select where completions are served from. Server defaults come from your backend configuration.
           </p>
-          <div className="mt-3 flex flex-wrap gap-2">
+          <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
             {providerOptions.map((option) => {
               const active: boolean = option.id === provider.id;
               const baseClasses: string =
-                "inline-flex min-w-[9rem] flex-col items-start rounded-2xl border px-4 py-3 text-left text-sm transition-colors";
+                "flex h-full w-full flex-col items-start rounded-2xl border px-4 py-3 text-left text-sm transition-colors";
               const activeClasses: string =
                 `${baseClasses} border-sky-500/80 bg-sky-500/10 text-foreground`;
               const inactiveClasses: string =
@@ -588,37 +588,62 @@ export default function AiKeysCard(props: AiKeysCardProps): ReactElement {
             </label>
           </div>
           <div className="mt-3 grid gap-3 md:grid-cols-2">
-            <label className="block text-xs font-medium text-muted-foreground">
-              Type
-              <select
-                value={customKind}
-                onChange={(event: ChangeEvent<HTMLSelectElement>): void =>
-                  setCustomKind(event.target.value === "image" ? "image" : "text")
-                }
-                className="mt-1 w-full rounded-xl border border-surface bg-surface px-3 py-2 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
-              >
-                <option value="text">Text</option>
-                <option value="image">Image</option>
-              </select>
-            </label>
-            <label className="block text-xs font-medium text-muted-foreground">
-              Profile
-              <select
-                value={customTier}
-                onChange={(event: ChangeEvent<HTMLSelectElement>): void => {
-                  const value: string = event.target.value;
-                  const nextTier: "default" | "fast" | "quality" | "local" =
-                    value === "fast" || value === "quality" || value === "local" ? value : "default";
-                  setCustomTier(nextTier);
-                }}
-                className="mt-1 w-full rounded-xl border border-surface bg-surface px-3 py-2 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
-              >
-                <option value="default">Balanced</option>
-                <option value="fast">Fast</option>
-                <option value="quality">Quality</option>
-                <option value="local">Local</option>
-              </select>
-            </label>
+            <div className="block text-xs font-medium text-muted-foreground">
+              <p>Type</p>
+              <div className="mt-1 flex flex-wrap gap-1.5">
+                {(["text", "image"] as const).map((kind: "text" | "image") => {
+                  const active: boolean = customKind === kind;
+                  const label: string = kind === "text" ? "Text" : "Image";
+                  const icon: ReactElement = getModelFilterIcon(kind);
+                  return (
+                    <PillButton
+                      key={kind}
+                      variant="primary"
+                      size="xs"
+                      active={active}
+                      onClick={(): void => setCustomKind(kind)}
+                      ariaPressed={active}
+                    >
+                      <span aria-hidden="true">{icon}</span>
+                      <span>{label}</span>
+                    </PillButton>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="block text-xs font-medium text-muted-foreground">
+              <p>Profile</p>
+              <div className="mt-1 flex flex-wrap gap-1.5">
+                {(
+                  [
+                    { id: "default" as const, label: "Balanced" },
+                    { id: "fast" as const, label: "Fast" },
+                    { id: "quality" as const, label: "Quality" },
+                    { id: "local" as const, label: "Local" },
+                  ] as const
+                ).map(
+                  (
+                    option: { readonly id: "default" | "fast" | "quality" | "local"; readonly label: string },
+                  ) => {
+                    const active: boolean = customTier === option.id;
+                    const icon: ReactElement | null = getTierIcon(option.id);
+                    return (
+                      <PillButton
+                        key={option.id}
+                        variant="primary"
+                        size="xs"
+                        active={active}
+                        onClick={(): void => setCustomTier(option.id)}
+                        ariaPressed={active}
+                      >
+                        {icon && <span aria-hidden="true">{icon}</span>}
+                        <span>{option.label}</span>
+                      </PillButton>
+                    );
+                  },
+                )}
+              </div>
+            </div>
           </div>
           <div className="mt-3 flex justify-end">
             <button

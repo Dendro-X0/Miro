@@ -1,12 +1,16 @@
 "use client";
 
-import type { ChangeEvent, ReactElement } from "react";
+import type { ReactElement } from "react";
 import { useMemo, useState } from "react";
-import { ChevronDown, Filter, Image as ImageIcon, Search, Server, Sparkles, Zap } from "lucide-react";
+import { ChevronDown, Image as ImageIcon, Sparkles } from "lucide-react";
 import type { ModelSwitcherOption, ModelSwitcherProps } from "./types";
 import type { AiModelFilterTag } from "../_settings-store";
 import UiKickerLabel from "../ui/kicker-label";
-import PillButton from "../ui/pill-button";
+import ModelSwitcherPanel from "../modules/ui/components/model/model-switcher-panel";
+import type {
+  ModelSwitcherPanelHandlers,
+  ModelSwitcherPanelState,
+} from "../modules/ui/lib/model-switcher-types";
 
 function getProviderIcon(providerId: string): ReactElement | null {
   const logoClassName: string = "h-3.5 w-3.5";
@@ -70,25 +74,6 @@ function getProviderIcon(providerId: string): ReactElement | null {
     );
   }
   return null;
-}
-
-function getFeatureIcon(tag: AiModelFilterTag | "all"): ReactElement {
-  if (tag === "all") {
-    return <Filter className="h-3 w-3" aria-hidden="true" />;
-  }
-  if (tag === "image") {
-    return <ImageIcon className="h-3 w-3" aria-hidden="true" />;
-  }
-  if (tag === "fast") {
-    return <Zap className="h-3 w-3" aria-hidden="true" />;
-  }
-  if (tag === "quality") {
-    return <Sparkles className="h-3 w-3" aria-hidden="true" />;
-  }
-  if (tag === "local") {
-    return <Server className="h-3 w-3" aria-hidden="true" />;
-  }
-  return <Sparkles className="h-3 w-3" aria-hidden="true" />;
 }
 
 export default function ModelSwitcher(props: ModelSwitcherProps): ReactElement {
@@ -164,9 +149,48 @@ export default function ModelSwitcher(props: ModelSwitcherProps): ReactElement {
     },
     [options, providerAndFeatureFilteredOptions, searchQuery],
   );
+  const currentTextModel: ModelSwitcherOption | undefined =
+    options.find((option: ModelSwitcherOption): boolean => option.id === value) ?? undefined;
+  const currentImageModel: ModelSwitcherOption | undefined =
+    imageModelId !== undefined
+      ? options.find(
+          (option: ModelSwitcherOption): boolean =>
+            option.id === imageModelId && option.tags.includes("image"),
+        ) ?? undefined
+      : undefined;
 
-  const current: ModelSwitcherOption | undefined =
-    options.find((option: ModelSwitcherOption): boolean => option.id === value) || options[0];
+  const providerSummaryLabel: string =
+    providerFilterId === "all"
+      ? "All providers"
+      : providers.find(
+          (provider: { readonly id: string; readonly label: string }): boolean =>
+            provider.id === providerFilterId,
+        )?.label ?? "Filtered";
+
+  const featureSummaryLabel: string =
+    featureFilter === "all"
+      ? "All capabilities"
+      : featureOptions.find(
+          (feature: { readonly id: AiModelFilterTag | "all"; readonly label: string }): boolean =>
+            feature.id === featureFilter,
+        )?.label ?? "Filtered";
+
+  const providerForIcon: ModelSwitcherOption | undefined =
+    currentTextModel ?? currentImageModel ?? options[0];
+  const currentProviderIcon: ReactElement | null = providerForIcon
+    ? getProviderIcon(providerForIcon.providerId)
+    : null;
+
+  if (!currentTextModel && !currentImageModel && options.length === 0) {
+    return (
+      <div className="relative inline-flex items-center gap-2 rounded-full border border-surface bg-surface px-3.5 py-2 text-xs font-medium text-foreground shadow-lg backdrop-blur">
+        <UiKickerLabel text="Model" tone="muted" />
+        <span className="inline-flex items-center rounded-full bg-surface-muted px-2 py-0.5 text-[11px] font-semibold text-red-300">
+          Model not found
+        </span>
+      </div>
+    );
+  }
 
   function handleToggle(): void {
     setOpen((previous: boolean): boolean => !previous);
@@ -205,45 +229,27 @@ export default function ModelSwitcher(props: ModelSwitcherProps): ReactElement {
     setFeatureFilter(tag);
   }
 
-  function handleChangeSearch(event: ChangeEvent<HTMLInputElement>): void {
-    const nextQuery: string = event.target.value;
-    setSearchQuery(nextQuery);
-  }
+  const panelState: ModelSwitcherPanelState = {
+    open,
+    searchQuery,
+    filtersOpen,
+    providerSummaryLabel,
+    featureSummaryLabel,
+  };
 
-  const providerSummaryLabel: string =
-    providerFilterId === "all"
-      ? "All providers"
-      : providers.find(
-          (provider: { readonly id: string; readonly label: string }): boolean => {
-            return provider.id === providerFilterId;
-          },
-        )?.label ?? "Filtered";
-
-  const featureSummaryLabel: string =
-    featureFilter === "all"
-      ? "All capabilities"
-      : featureOptions.find(
-          (feature: { readonly id: AiModelFilterTag | "all"; readonly label: string }): boolean => {
-            return feature.id === featureFilter;
-          },
-        )?.label ?? "Filtered";
-
-  if (!current) {
-    return (
-      <div className="relative inline-flex items-center gap-2 rounded-full border border-surface bg-surface px-3.5 py-2 text-xs font-medium text-foreground shadow-lg backdrop-blur">
-        <UiKickerLabel text="Model" tone="muted" />
-        <span className="inline-flex items-center rounded-full bg-surface-muted px-2 py-0.5 text-[11px] font-semibold text-red-300">
-          Model not found
-        </span>
-      </div>
-    );
-  }
-
-  const currentProviderIcon: ReactElement | null = getProviderIcon(current.providerId);
+  const panelHandlers: ModelSwitcherPanelHandlers = {
+    onChangeSearch: (value: string): void => {
+      setSearchQuery(value);
+    },
+    onToggleFilters: handleToggleFilters,
+    onSelectProvider: handleSelectProvider,
+    onSelectFeature: handleSelectFeature,
+    onSelectOption: handleSelect,
+  };
 
   return (
     <div
-      className={`relative inline-flex items-center rounded-full border border-surface bg-surface px-3.5 py-2 text-xs font-medium text-foreground shadow-lg backdrop-blur transition-colors ${
+      className={`relative inline-flex max-w-[min(16rem,100%)] shrink items-center rounded-full border border-surface bg-surface px-3.5 py-2 text-xs font-medium text-foreground shadow-lg backdrop-blur transition-colors sm:max-w-none sm:shrink-0 ${
         open ? "border-sky-400/80 bg-surface-muted" : "hover:border-sky-400/80"
       }`}
     >
@@ -255,22 +261,22 @@ export default function ModelSwitcher(props: ModelSwitcherProps): ReactElement {
         className="flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900"
       >
         <UiKickerLabel text="Model" tone="muted" />
-        <span className="inline-flex items-center gap-1 rounded-full bg-surface-muted px-2 py-0.5 text-[11px] font-semibold text-foreground">
+        <span className="inline-flex items-center gap-2 rounded-full bg-surface-muted px-2 py-0.5 text-[11px] font-semibold text-foreground">
           {currentProviderIcon && (
-            <span className="flex h-4 w-4 items-center justify-center rounded-full bg-surface" aria-hidden="true">
+            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-surface" aria-hidden="true">
               {currentProviderIcon}
             </span>
           )}
-          <span
-            className={
-              open
-                ? "inline max-w-40 truncate"
-                : "hidden max-w-40 truncate sm:inline"
-            }
-          >
-            {current.label}
+          <span className="hidden max-w-36 truncate sm:inline">
+            {currentTextModel ? currentTextModel.label : providerForIcon.label}
           </span>
         </span>
+        {currentImageModel && (
+          <span className="ml-1 hidden items-center gap-1 rounded-full bg-surface-muted px-2 py-0.5 text-[10px] text-emerald-200 sm:inline-flex">
+            <ImageIcon className="h-3 w-3" aria-hidden="true" />
+            <span className="hidden sm:inline">Image</span>
+          </span>
+        )}
         <ChevronDown
           className={`h-3 w-3 transition-transform ${open ? "rotate-180" : ""}`}
           aria-hidden="true"
@@ -279,177 +285,19 @@ export default function ModelSwitcher(props: ModelSwitcherProps): ReactElement {
       {ready === false && (
         <p className="ml-2 text-[10px] font-medium text-red-400">AI provider not connected</p>
       )}
-      {open && (
-        <div
-          className="absolute right-0 top-full z-30 mt-2 w-72 rounded-2xl bg-surface border border-surface text-xs shadow-xl ring-1 ring-slate-950/70"
-          role="listbox"
-          aria-label="Select model"
-        >
-          <div className="border-b border-surface-muted px-3 py-2">
-            <label className="mb-2 flex items-center gap-2 rounded-xl bg-surface px-2 py-1.5 text-[11px] text-muted-foreground">
-              <Search className="h-3.5 w-3.5" aria-hidden="true" />
-              <input
-                type="search"
-                value={searchQuery}
-                onChange={handleChangeSearch}
-                placeholder="Search models..."
-                className="h-6 flex-1 bg-transparent text-xs text-foreground placeholder:text-muted-foreground focus:outline-none"
-              />
-            </label>
-            <div className="flex items-center justify-between text-[10px] text-muted-foreground">
-              <button
-                type="button"
-                onClick={handleToggleFilters}
-                className="inline-flex items-center gap-1 rounded-full bg-surface px-2 py-0.5 hover:bg-surface-muted"
-                aria-expanded={filtersOpen}
-                aria-label="Toggle model filters"
-              >
-                <Filter className="h-3 w-3" aria-hidden="true" />
-                <span>Filters</span>
-                <ChevronDown
-                  className={`h-3 w-3 transition-transform ${filtersOpen ? "rotate-180" : ""}`}
-                  aria-hidden="true"
-                />
-              </button>
-              <span className="hidden sm:inline">
-                {providerSummaryLabel} · {featureSummaryLabel}
-              </span>
-            </div>
-            {filtersOpen && (
-              <div className="mt-2 space-y-1">
-                <div className="flex flex-wrap gap-1">
-                  <PillButton
-                    variant="primary"
-                    size="xs"
-                    active={providerFilterId === "all"}
-                    onClick={(): void => handleSelectProvider("all")}
-                    ariaPressed={providerFilterId === "all"}
-                  >
-                    <span aria-hidden="true">
-                      <Filter className="h-3 w-3" aria-hidden="true" />
-                    </span>
-                    <span className="hidden sm:inline">All</span>
-                  </PillButton>
-                  {providers.map(
-                    (
-                      provider: { readonly id: string; readonly label: string },
-                    ): ReactElement => {
-                      const active: boolean = provider.id === providerFilterId;
-                      const icon: ReactElement | null = getProviderIcon(provider.id);
-                      return (
-                        <PillButton
-                          key={provider.id}
-                          variant="primary"
-                          size="xs"
-                          active={active}
-                          onClick={(): void => handleSelectProvider(provider.id)}
-                          ariaPressed={active}
-                        >
-                          {icon && <span aria-hidden="true">{icon}</span>}
-                          <span className="hidden sm:inline">{provider.label}</span>
-                        </PillButton>
-                      );
-                    },
-                  )}
-                </div>
-                <div className="flex flex-wrap gap-1">
-                  {featureOptions.map(
-                    (
-                      feature: { readonly id: AiModelFilterTag | "all"; readonly label: string },
-                    ): ReactElement => {
-                      const isActiveAll: boolean = feature.id === "all" && featureFilter === "all";
-                      const isActiveTag: boolean =
-                        feature.id !== "all" && feature.id === featureFilter;
-                      const active: boolean = isActiveAll || isActiveTag;
-                      return (
-                        <PillButton
-                          key={feature.id}
-                          variant="primary"
-                          size="xs"
-                          active={active}
-                          onClick={(): void => handleSelectFeature(feature.id)}
-                          ariaPressed={active}
-                        >
-                          <span aria-hidden="true">{getFeatureIcon(feature.id)}</span>
-                          <span className="hidden sm:inline">{feature.label}</span>
-                        </PillButton>
-                      );
-                    },
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-          <div className="max-h-72 space-y-0.5 overflow-y-auto py-1">
-            {visibleOptions.length === 0 ? (
-              <div className="px-3 py-2 text-[11px] text-muted-foreground">
-                No models found. Try a different search or filter.
-              </div>
-            ) : (
-              visibleOptions.map((option: ModelSwitcherOption) => {
-                const isActiveText: boolean = option.id === value;
-                const isActiveImage: boolean =
-                  imageModelId !== undefined &&
-                  option.id === imageModelId &&
-                  option.tags.includes("image");
-                const active: boolean = isActiveText || isActiveImage;
-                const baseClasses: string =
-                  "flex w-full items-center justify-between rounded-2xl px-3 py-2 text-left transition-colors";
-                const activeClasses: string = "bg-sky-500/15 text-foreground";
-                const inactiveClasses: string =
-                  "text-muted-foreground hover:bg-surface-muted";
-                const providerIcon: ReactElement | null = getProviderIcon(option.providerId);
-                const providerLabelClass: string = active
-                  ? "text-[10px] text-slate-800 dark:text-sky-200"
-                  : "text-[10px] text-muted-foreground";
-                return (
-                  <button
-                    key={option.id}
-                    type="button"
-                    role="option"
-                    aria-selected={active}
-                    onClick={(): void => handleSelect(option.id)}
-                    className={`${baseClasses} ${active ? activeClasses : inactiveClasses}`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-surface" aria-hidden="true">
-                        {providerIcon ?? <Sparkles className="h-3 w-3" aria-hidden="true" />}
-                      </span>
-                      <div className="flex flex-col text-xs">
-                        <span className="font-medium">{option.label}</span>
-                        <span className={providerLabelClass}>
-                          {option.providerLabel}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <div className="flex gap-0.5 text-[10px] text-muted-foreground" aria-hidden="true">
-                        {option.tags.includes("text") && (
-                          <Sparkles className="h-3 w-3" />
-                        )}
-                        {option.tags.includes("image") && (
-                          <ImageIcon className="h-3 w-3" />
-                        )}
-                        {option.tags.includes("fast") && <Zap className="h-3 w-3" />}
-                        {option.tags.includes("quality") && !option.tags.includes("fast") && (
-                          <Sparkles className="h-3 w-3" />
-                        )}
-                        {option.tags.includes("local") && <Server className="h-3 w-3" />}
-                      </div>
-                      {active && (
-                        <span
-                          className="h-1.5 w-1.5 rounded-full bg-sky-400"
-                          aria-hidden="true"
-                        />
-                      )}
-                    </div>
-                  </button>
-                );
-              })
-            )}
-          </div>
-        </div>
-      )}
+      <ModelSwitcherPanel
+        state={panelState}
+        handlers={panelHandlers}
+        providers={providers}
+        featureOptions={featureOptions}
+        providerFilterId={providerFilterId}
+        featureFilter={featureFilter}
+        visibleOptions={visibleOptions}
+        value={value}
+        imageModelId={imageModelId}
+        getProviderIcon={getProviderIcon}
+        headerProviderIcon={currentProviderIcon}
+      />
     </div>
   );
 }

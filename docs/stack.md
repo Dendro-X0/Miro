@@ -7,6 +7,7 @@ Miro builds on a TypeScript-first stack optimized for a modular, AI-enabled PWA.
 - Next.js 16 App Router (`apps/miro-web`)
 - React Server Components where appropriate
 - Tailwind CSS v4 for styling
+- Modular UI layer under `apps/miro-web/app/modules/ui` for shared components, hooks, and UI types
 
 ## API
 

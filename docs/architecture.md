@@ -22,4 +22,14 @@ Miro is organized as a pnpm monorepo with clear boundaries between apps and shar
 - AI endpoints invoke helpers from `@miro/ai` using that configuration.
 - Local settings (profile, appearance, AI view state) are stored on the client via a typed `useSettings` hook and do not require a database.
 
+## Frontend UI architecture
+
+- The main PWA shell lives in `apps/miro-web/app/_app-shell.tsx`.
+- Shell components under `apps/miro-web/app/shell/` manage view state, routing between main views, and data wiring.
+- Presentation and interaction details are implemented in `apps/miro-web/app/modules/ui`:
+  - `components/` – reusable UI pieces such as the model switcher panel, chat input bar, assistant-mode row, chat hero, and error banner.
+  - `hooks/` – UI-focused hooks for scroll behaviour, viewport, and local UI state.
+  - `lib/` – shared UI types and helpers.
+- Shell components are kept intentionally small: they prepare typed props and delegate rendering to `modules/ui` components.
+
 As Miro evolves, this document can be expanded with concrete routes, entities, and interaction diagrams.

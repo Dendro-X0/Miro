@@ -175,6 +175,73 @@ interface AiImageV2ResponseBody {
   readonly images: readonly AiImageResult[];
 }
 
+type AiAssistantMode = "auto" | "text" | "image" | "both";
+
+interface AiAssistantV2RequestBody {
+  readonly messages: readonly ChatMessage[];
+  readonly mode?: AiAssistantMode;
+  readonly textModel?: string;
+  readonly imageModel?: string;
+  readonly imageSize?: string;
+  readonly imageCount?: number;
+  readonly webSearchEnabled?: boolean;
+  readonly byokKey?: string;
+}
+
+interface AiAssistantV2ResponseBody {
+  readonly completion?: ChatCompletionResponse;
+  readonly images?: readonly AiImageResult[];
+}
+
+function isAiAssistantV2RequestBody(value: unknown): value is AiAssistantV2RequestBody {
+  if (value === null || typeof value !== "object") {
+    return false;
+  }
+  const record: Record<string, unknown> = value as Record<string, unknown>;
+  if (!Array.isArray(record.messages)) {
+    return false;
+  }
+  for (const item of record.messages) {
+    if (item === null || typeof item !== "object") {
+      return false;
+    }
+    const messageRecord: Record<string, unknown> = item as Record<string, unknown>;
+    if (typeof messageRecord.role !== "string") {
+      return false;
+    }
+  }
+  if ("mode" in record) {
+    const modeValue: unknown = record.mode;
+    if (typeof modeValue !== "string") {
+      return false;
+    }
+    const allowedModes: readonly AiAssistantMode[] = ["auto", "text", "image", "both"];
+    const isAllowed: boolean = allowedModes.includes(modeValue as AiAssistantMode);
+    if (!isAllowed) {
+      return false;
+    }
+  }
+  if ("textModel" in record && typeof record.textModel !== "string") {
+    return false;
+  }
+  if ("imageModel" in record && typeof record.imageModel !== "string") {
+    return false;
+  }
+  if ("imageSize" in record && typeof record.imageSize !== "string") {
+    return false;
+  }
+  if ("imageCount" in record && typeof record.imageCount !== "number") {
+    return false;
+  }
+  if ("webSearchEnabled" in record && typeof record.webSearchEnabled !== "boolean") {
+    return false;
+  }
+  if ("byokKey" in record && typeof record.byokKey !== "string") {
+    return false;
+  }
+  return true;
+}
+
 export interface AiRouteDeps {
   readonly app: AppInstance;
   readonly apiConfig: ApiConfig;
@@ -205,6 +272,69 @@ export function createImageClientFromConfig(config: ApiConfig): AiImageClient {
     return createOpenAiImageClient(openAiConfig);
   }
   return createMockAiImageClient();
+}
+
+type AppliedAiAssistantMode = "text" | "image" | "both";
+
+function getLastUserContent(messages: readonly ChatMessage[]): string {
+  const reversed: readonly ChatMessage[] = [...messages].reverse();
+  const lastUser: ChatMessage | undefined = reversed.find(
+    (message: ChatMessage): boolean => message.role === "user",
+  );
+  const content: unknown = lastUser?.content;
+  if (typeof content !== "string") {
+    return "";
+  }
+  return content;
+}
+
+function getAppliedAssistantMode(
+  messages: readonly ChatMessage[],
+  mode: AiAssistantMode | undefined,
+): AppliedAiAssistantMode {
+  if (mode && mode !== "auto") {
+    if (mode === "text" || mode === "image" || mode === "both") {
+      return mode;
+    }
+  }
+  const latestUser: string = getLastUserContent(messages).toLowerCase();
+  if (!latestUser) {
+    return "text";
+  }
+  const imageKeywords: readonly string[] = [
+    "image",
+    "picture",
+    "photo",
+    "logo",
+    "icon",
+    "wallpaper",
+    "illustration",
+    "render",
+    "drawing",
+    "sketch",
+    "art",
+  ];
+  const textKeywords: readonly string[] = [
+    "explain",
+    "write",
+    "draft",
+    "summarize",
+    "outline",
+    "describe",
+  ];
+  const hasImageKeyword: boolean = imageKeywords.some((keyword: string): boolean =>
+    latestUser.includes(keyword),
+  );
+  const hasTextKeyword: boolean = textKeywords.some((keyword: string): boolean =>
+    latestUser.includes(keyword),
+  );
+  if (hasImageKeyword && hasTextKeyword) {
+    return "both";
+  }
+  if (hasImageKeyword) {
+    return "image";
+  }
+  return "text";
 }
 
 interface GetAiClientForRequestInput {
@@ -394,6 +524,86 @@ async function handleAiChatV2(
   }
 }
 
+async function handleAiAssistantV2(
+  context: AppContext,
+  apiConfig: ApiConfig,
+  baseClient: AiClient,
+  baseImageClient: AiImageClient,
+): Promise<Response> {
+  if (isAiRateLimited(context)) {
+    return context.json({ error: "Rate limit exceeded" } as const, 429);
+  }
+  let rawBody: unknown;
+  try {
+    rawBody = await context.req.json();
+  } catch {
+    return context.json({ error: "Invalid JSON body" } as const, 400);
+  }
+  if (!isAiAssistantV2RequestBody(rawBody)) {
+    return context.json({ error: "Invalid request body" } as const, 400);
+  }
+  const requestBody: AiAssistantV2RequestBody = rawBody;
+  const trimmedMessages: readonly ChatMessage[] = truncateMessagesForV2(requestBody.messages);
+  const mode: AppliedAiAssistantMode = getAppliedAssistantMode(trimmedMessages, requestBody.mode);
+  const textModel: string = resolveModelId(requestBody.textModel, apiConfig.ai.models);
+  const imageModelRaw: string = requestBody.imageModel?.trim() ?? "";
+  const imageModel: string = imageModelRaw.length > 0 ? imageModelRaw : DEFAULT_IMAGE_MODEL;
+  const size: string | undefined = requestBody.imageSize;
+  const countRaw: number = requestBody.imageCount ?? 1;
+  const count: number = countRaw > 0 && countRaw <= 8 ? countRaw : 1;
+  const byokKey: string | undefined = requestBody.byokKey;
+  const webSearchEnabled: boolean = requestBody.webSearchEnabled === true;
+  const metadata: Readonly<Record<string, unknown>> | undefined = webSearchEnabled
+    ? { webSearchEnabled: true }
+    : undefined;
+  const chatInput: ChatCompletionInput = {
+    model: textModel,
+    messages: trimmedMessages,
+    metadata,
+  };
+  const imageParams: AiImageParams = {
+    model: imageModel,
+    prompt: getLastUserContent(trimmedMessages),
+    size,
+    count,
+  };
+  try {
+    const client: AiClient = getAiClientForRequest({ apiConfig, baseClient, byokKey });
+    const imageClient: AiImageClient = getImageClientForRequest({
+      apiConfig,
+      baseClient: baseImageClient,
+      byokKey,
+    });
+    let completion: ChatCompletionResponse | undefined;
+    let images: readonly AiImageResult[] | undefined;
+    if (mode === "text") {
+      const chatCompletion: ChatCompletionResponse =
+        await client.provider.createChatCompletion(chatInput);
+      completion = chatCompletion;
+    } else if (mode === "image") {
+      const generated: readonly AiImageResult[] = await imageClient.generateImages(imageParams);
+      images = generated;
+    } else {
+      const [chatCompletion, generatedImages]: [
+        ChatCompletionResponse,
+        readonly AiImageResult[],
+      ] = await Promise.all([
+        client.provider.createChatCompletion(chatInput),
+        imageClient.generateImages(imageParams),
+      ]);
+      completion = chatCompletion;
+      images = generatedImages;
+    }
+    const responseBody: AiAssistantV2ResponseBody = {
+      ...(completion ? { completion } : {}),
+      ...(images && images.length > 0 ? { images } : {}),
+    };
+    return context.json(responseBody);
+  } catch {
+    return context.json({ error: "AI provider error" } as const, 502);
+  }
+}
+
 export function registerAiRoutes(deps: AiRouteDeps): void {
   const { app, apiConfig, aiClient, imageClient } = deps;
 
@@ -417,5 +627,8 @@ export function registerAiRoutes(deps: AiRouteDeps): void {
 
   app.post("/v2/ai/complete", async (context: AppContext) => handleAiCompleteV2(context, apiConfig, aiClient));
   app.post("/v2/ai/chat", async (context: AppContext) => handleAiChatV2(context, apiConfig, aiClient));
+  app.post("/v2/ai/assistant", async (context: AppContext) =>
+    handleAiAssistantV2(context, apiConfig, aiClient, imageClient),
+  );
   app.post("/v2/ai/image", async (context: AppContext) => handleAiImageV2(context, apiConfig, imageClient));
 }

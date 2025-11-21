@@ -2,11 +2,20 @@ import type { AiModelFilterTag } from "../_settings-store";
 
 export type MainView = "today" | "projects" | "activity" | "settings";
 
+export type AssistantMode = "auto" | "text" | "image" | "both";
+
+export interface ChatImageAttachmentInput {
+  readonly dataUrl: string;
+  readonly prompt: string;
+}
+
 export interface ChatInputBarProps {
   readonly onSend: (content: string) => Promise<void> | void;
   readonly onGenerateImage?: (prompt: string) => Promise<void> | void;
+  readonly onAttachImage?: (input: ChatImageAttachmentInput) => Promise<void> | void;
   readonly sending: boolean;
   readonly onFocus?: () => void;
+  readonly placeholder?: string;
 }
 
 export interface SidebarChatSummary {

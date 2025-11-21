@@ -2,18 +2,36 @@
 
 import type { MutableRefObject, ReactElement, ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
-import { AlertCircle, Menu, MessageCircle, Settings } from "lucide-react";
+import {
+  Globe2,
+  Image as ImageIcon,
+  Layers,
+  Menu,
+  MessageCircle,
+  MessageSquareText,
+  Settings,
+  Sparkles,
+} from "lucide-react";
 import ThemeToggle from "./_theme-toggle";
 import SettingsView from "./settings/settings-view";
 import { useSettings } from "./_settings-store";
 import type { AiCustomModel, AiModelFilterTag } from "./_settings-store";
-import type { MainView, ModelSwitcherOption, SidebarChatSummary } from "./shell/types";
+import type {
+  AssistantMode,
+  ChatImageAttachmentInput,
+  MainView,
+  ModelSwitcherOption,
+  SidebarChatSummary,
+} from "./shell/types";
 import SidebarContent from "./shell/sidebar";
 import ModelSwitcher from "./shell/model-switcher";
 import ChatInputBar from "./shell/chat-input";
 import PlaceholderView from "./shell/placeholder-view";
 import SampleMessages from "./shell/sample-messages";
 import UiKickerLabel from "./ui/kicker-label";
+import PillButton from "./ui/pill-button";
+import AssistantModeRow from "./modules/ui/components/chat/assistant-mode-row";
+import ChatErrorBanner from "./modules/ui/components/chat/chat-error-banner";
 import aiModelConfig from "./settings/ai-model-presets";
 
 interface AppShellProps {
@@ -29,6 +47,7 @@ interface UiChatMessage {
 interface BackendChatMessage {
   readonly role: "system" | "user" | "assistant";
   readonly content: string;
+  readonly imageDataUrl?: string;
 }
 
 interface BackendChatCompletionChoice {
@@ -44,12 +63,17 @@ interface AiChatResponseBody {
   readonly completion: BackendChatCompletion;
 }
 
+interface AiAssistantResponseBody {
+  readonly completion?: BackendChatCompletion;
+  readonly images?: readonly BackendImageResult[];
+}
+
 interface BackendImageResult {
-	readonly url: string;
+  readonly url: string;
 }
 
 interface AiImageResponseBody {
-	readonly images: readonly BackendImageResult[];
+  readonly images: readonly BackendImageResult[];
 }
 
 interface AiConfigReadyResponse {
@@ -82,6 +106,8 @@ export default function AppShell(props: AppShellProps): ReactElement {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<MainView>("today");
+  const [assistantMode, setAssistantMode] = useState<AssistantMode>("auto");
+  const [webSearchEnabled, setWebSearchEnabled] = useState<boolean>(false);
   const { settings, updateSettings, resetSettings } = useSettings();
   const modelId: string = settings.aiView.selectedModelId || defaultModelId;
   const byokKey: string = settings.aiView.byokKey;
@@ -141,6 +167,14 @@ export default function AppShell(props: AppShellProps): ReactElement {
 
   function handleChangeImageModel(nextModelId: string): void {
     updateSettings({ aiView: { selectedImageModelId: nextModelId } });
+  }
+
+  function handleChangeAssistantMode(nextMode: AssistantMode): void {
+    setAssistantMode(nextMode);
+  }
+
+  function handleToggleWebSearch(): void {
+    setWebSearchEnabled((previous: boolean): boolean => !previous);
   }
 
   function handleSelectChatSession(chatId: string): void {
@@ -261,30 +295,53 @@ export default function AppShell(props: AppShellProps): ReactElement {
     setSending(true);
     try {
       const backendMessages: readonly BackendChatMessage[] = buildBackendMessages(nextMessages);
-      const response: Response = await fetch(`${defaultApiBaseUrl}/v2/ai/chat`, {
+      const response: Response = await fetch(`${defaultApiBaseUrl}/v2/ai/assistant`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(
-          buildChatRequestBody({ messages: backendMessages, modelId, byokKey }),
-        ),
+        body: JSON.stringify({
+          messages: backendMessages,
+          mode: assistantMode,
+          textModel: modelId,
+          imageModel: imageModelId,
+          webSearchEnabled,
+          byokKey,
+        }),
       });
       if (!response.ok) {
         setError("Unable to reach Miro right now. Please try again in a moment.");
         return;
       }
-      const body: AiChatResponseBody = (await response.json()) as AiChatResponseBody;
-      const firstChoice: BackendChatCompletionChoice | undefined = body.completion.choices[0];
-      const assistantContent: string | undefined = firstChoice?.message.content;
-      if (!assistantContent) {
+      const body: AiAssistantResponseBody = (await response.json()) as AiAssistantResponseBody;
+      const assistantMessages: UiChatMessage[] = [];
+      if (body.completion) {
+        const firstChoice: BackendChatCompletionChoice | undefined = body.completion.choices[0];
+        const assistantContent: string | undefined = firstChoice?.message.content;
+        if (assistantContent) {
+          const assistantTextMessage: UiChatMessage = {
+            id: `assistant-${Date.now().toString(10)}`,
+            role: "assistant",
+            content: assistantContent,
+          };
+          assistantMessages.push(assistantTextMessage);
+        }
+      }
+      if (body.images && body.images.length > 0) {
+        const firstImage: BackendImageResult | undefined = body.images[0];
+        const imageUrl: string | undefined = firstImage?.url;
+        if (imageUrl) {
+          const assistantImageMessage: UiChatMessage = {
+            id: `assistant-image-${Date.now().toString(10)}`,
+            role: "assistant",
+            content: `Generated image: ${imageUrl}`,
+          };
+          assistantMessages.push(assistantImageMessage);
+        }
+      }
+      if (assistantMessages.length === 0) {
         setError("Received an empty response from Miro. Please try again.");
         return;
       }
-      const assistantMessage: UiChatMessage = {
-        id: `assistant-${Date.now().toString(10)}`,
-        role: "assistant",
-        content: assistantContent,
-      };
-      const finalMessages: readonly UiChatMessage[] = [...nextMessages, assistantMessage];
+      const finalMessages: readonly UiChatMessage[] = [...nextMessages, ...assistantMessages];
       setChatState((previous: ChatState): ChatState => updateActiveSessionMessages(previous, finalMessages));
     } catch {
       setError("Something went wrong while talking to Miro. Check your connection and try again.");
@@ -345,6 +402,84 @@ export default function AppShell(props: AppShellProps): ReactElement {
     }
   }
 
+  async function handleAttachImage(input: ChatImageAttachmentInput): Promise<void> {
+    if (sending) {
+      return;
+    }
+    const trimmedDataUrl: string = input.dataUrl.trim();
+    if (!trimmedDataUrl) {
+      return;
+    }
+    const trimmedPrompt: string = input.prompt.trim();
+    const content: string = trimmedPrompt.length > 0 ? trimmedPrompt : "Please take a look at this image.";
+    const userMessage: UiChatMessage = {
+      id: `user-image-${Date.now().toString(10)}`,
+      role: "user",
+      content,
+    };
+    const baseMessages: readonly UiChatMessage[] = messages;
+    const nextMessages: readonly UiChatMessage[] = [...baseMessages, userMessage];
+    setChatState((previous: ChatState): ChatState => updateActiveSessionMessages(previous, nextMessages));
+    setError(null);
+    setSending(true);
+    try {
+      const backendMessages: readonly BackendChatMessage[] = buildBackendMessages(nextMessages, trimmedDataUrl);
+      const response: Response = await fetch(`${defaultApiBaseUrl}/v2/ai/assistant`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: backendMessages,
+          mode: assistantMode,
+          textModel: modelId,
+          imageModel: imageModelId,
+          webSearchEnabled,
+          byokKey,
+        }),
+      });
+      if (!response.ok) {
+        setError("Unable to reach Miro right now. Please try again in a moment.");
+        return;
+      }
+      const body: AiAssistantResponseBody = (await response.json()) as AiAssistantResponseBody;
+      const assistantMessages: UiChatMessage[] = [];
+      if (body.completion) {
+        const firstChoice: BackendChatCompletionChoice | undefined = body.completion.choices[0];
+        const assistantContent: string | undefined = firstChoice?.message.content;
+        if (assistantContent) {
+          const assistantTextMessage: UiChatMessage = {
+            id: `assistant-${Date.now().toString(10)}`,
+            role: "assistant",
+            content: assistantContent,
+          };
+          assistantMessages.push(assistantTextMessage);
+        }
+      }
+      if (body.images && body.images.length > 0) {
+        const firstImage: BackendImageResult | undefined = body.images[0];
+        const imageUrl: string | undefined = firstImage?.url;
+        if (imageUrl) {
+          const assistantImageMessage: UiChatMessage = {
+            id: `assistant-image-${Date.now().toString(10)}`,
+            role: "assistant",
+            content: `Generated image: ${imageUrl}`,
+          };
+          assistantMessages.push(assistantImageMessage);
+        }
+      }
+      if (assistantMessages.length === 0) {
+        setError("Received an empty response from Miro. Please try again.");
+        return;
+      }
+      const finalMessages: readonly UiChatMessage[] = [...nextMessages, ...assistantMessages];
+      setChatState((previous: ChatState): ChatState => updateActiveSessionMessages(previous, finalMessages));
+    } catch {
+      setError("Something went wrong while talking to Miro. Check your connection and try again.");
+      return;
+    } finally {
+      setSending(false);
+    }
+  }
+
   async function handleRetryLastMessage(): Promise<void> {
     if (sending) {
       return;
@@ -357,30 +492,53 @@ export default function AppShell(props: AppShellProps): ReactElement {
     setSending(true);
     try {
       const backendMessages: readonly BackendChatMessage[] = buildBackendMessages(activeMessages);
-      const response: Response = await fetch(`${defaultApiBaseUrl}/v2/ai/chat`, {
+      const response: Response = await fetch(`${defaultApiBaseUrl}/v2/ai/assistant`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(
-          buildChatRequestBody({ messages: backendMessages, modelId, byokKey }),
-        ),
+        body: JSON.stringify({
+          messages: backendMessages,
+          mode: assistantMode,
+          textModel: modelId,
+          imageModel: imageModelId,
+          webSearchEnabled,
+          byokKey,
+        }),
       });
       if (!response.ok) {
         setError("Unable to reach Miro right now. Please try again in a moment.");
         return;
       }
-      const body: AiChatResponseBody = (await response.json()) as AiChatResponseBody;
-      const firstChoice: BackendChatCompletionChoice | undefined = body.completion.choices[0];
-      const assistantContent: string | undefined = firstChoice?.message.content;
-      if (!assistantContent) {
+      const body: AiAssistantResponseBody = (await response.json()) as AiAssistantResponseBody;
+      const assistantMessages: UiChatMessage[] = [];
+      if (body.completion) {
+        const firstChoice: BackendChatCompletionChoice | undefined = body.completion.choices[0];
+        const assistantContent: string | undefined = firstChoice?.message.content;
+        if (assistantContent) {
+          const assistantTextMessage: UiChatMessage = {
+            id: `assistant-${Date.now().toString(10)}`,
+            role: "assistant",
+            content: assistantContent,
+          };
+          assistantMessages.push(assistantTextMessage);
+        }
+      }
+      if (body.images && body.images.length > 0) {
+        const firstImage: BackendImageResult | undefined = body.images[0];
+        const imageUrl: string | undefined = firstImage?.url;
+        if (imageUrl) {
+          const assistantImageMessage: UiChatMessage = {
+            id: `assistant-image-${Date.now().toString(10)}`,
+            role: "assistant",
+            content: `Generated image: ${imageUrl}`,
+          };
+          assistantMessages.push(assistantImageMessage);
+        }
+      }
+      if (assistantMessages.length === 0) {
         setError("Received an empty response from Miro. Please try again.");
         return;
       }
-      const assistantMessage: UiChatMessage = {
-        id: `assistant-${Date.now().toString(10)}`,
-        role: "assistant",
-        content: assistantContent,
-      };
-      const finalMessages: readonly UiChatMessage[] = [...activeMessages, assistantMessage];
+      const finalMessages: readonly UiChatMessage[] = [...activeMessages, ...assistantMessages];
       setChatState((previous: ChatState): ChatState => updateActiveSessionMessages(previous, finalMessages));
     } catch {
       setError("Something went wrong while talking to Miro. Check your connection and try again.");
@@ -457,6 +615,7 @@ export default function AppShell(props: AppShellProps): ReactElement {
 
   const hasMessages: boolean = messages.length > 0;
   const topic: string = getCurrentTopic(messages);
+  const chatPlaceholder: string = getChatPlaceholder(assistantMode, webSearchEnabled);
 
   return (
     <div className="miro-gradient-shell min-h-screen text-foreground">
@@ -599,39 +758,29 @@ export default function AppShell(props: AppShellProps): ReactElement {
                     </div>
                   </div>
                 )}
+                {error && (
+                  <ChatErrorBanner
+                    message={error}
+                    onRetry={handleRetryLastMessage}
+                    onDismiss={handleDismissError}
+                  />
+                )}
               </div>
-              {error && (
-                <div
-                  className="flex items-center justify-between gap-3 rounded-2xl border border-red-500/60 bg-red-500/5 px-3 py-2 text-[11px] text-red-700 dark:bg-red-500/10 dark:text-red-200"
-                  role="alert"
-                >
-                  <div className="flex items-center gap-2">
-                    <AlertCircle className="h-4 w-4 text-red-500 dark:text-red-300" aria-hidden="true" />
-                    <p className="text-left">{error}</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={handleRetryLastMessage}
-                      className="rounded-xl bg-red-500/90 px-2.5 py-1 text-[11px] font-medium text-slate-950 shadow-sm hover:bg-red-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
-                    >
-                      Retry
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleDismissError}
-                      className="text-[11px] text-red-600 hover:text-red-800 focus-visible:outline-none focus-visible:underline dark:text-red-200 dark:hover:text-red-100"
-                    >
-                      Dismiss
-                    </button>
-                  </div>
-                </div>
-              )}
+              <div className="mt-1 text-[11px] text-muted-foreground">
+                <AssistantModeRow
+                  mode={assistantMode}
+                  onChangeMode={handleChangeAssistantMode}
+                  webSearchEnabled={webSearchEnabled}
+                  onToggleWebSearch={handleToggleWebSearch}
+                />
+              </div>
               <ChatInputBar
                 onSend={handleSendMessage}
                 onGenerateImage={handleGenerateImage}
+                onAttachImage={handleAttachImage}
                 sending={sending}
                 onFocus={handleFocusChatInput}
+                placeholder={chatPlaceholder}
               />
             </section>
           )}
@@ -804,37 +953,56 @@ function buildChatRequestBody(params: ChatRequestBodyParams): ChatRequestBody {
 }
 
 interface ImageRequestBodyParams {
-	readonly prompt: string;
-	readonly byokKey: string;
-	readonly modelId?: string;
+  readonly prompt: string;
+  readonly byokKey: string;
+  readonly modelId?: string;
 }
 
 interface ImageRequestBody {
-	readonly prompt: string;
-	readonly model?: string;
-	readonly byokKey?: string;
+  readonly prompt: string;
+  readonly model?: string;
+  readonly byokKey?: string;
 }
 
 function buildImageRequestBody(params: ImageRequestBodyParams): ImageRequestBody {
-	const trimmedByokKey: string = params.byokKey.trim();
-	const trimmedModelId: string = params.modelId?.trim() ?? "";
-	const base: ImageRequestBody = {
-		prompt: params.prompt,
-	};
-	const withModel: ImageRequestBody =
-		trimmedModelId.length > 0 ? { ...base, model: trimmedModelId } : base;
-	if (trimmedByokKey.length > 0) {
-		return { ...withModel, byokKey: trimmedByokKey };
-	}
-	return withModel;
+  const trimmedByokKey: string = params.byokKey.trim();
+  const trimmedModelId: string = params.modelId?.trim() ?? "";
+  const base: ImageRequestBody = {
+    prompt: params.prompt,
+  };
+  const withModel: ImageRequestBody =
+    trimmedModelId.length > 0 ? { ...base, model: trimmedModelId } : base;
+  if (trimmedByokKey.length > 0) {
+    return { ...withModel, byokKey: trimmedByokKey };
+  }
+  return withModel;
 }
 
-function buildBackendMessages(messages: readonly UiChatMessage[]): readonly BackendChatMessage[] {
+function buildBackendMessages(
+  messages: readonly UiChatMessage[],
+  imageDataUrl?: string,
+): readonly BackendChatMessage[] {
   const systemMessage: BackendChatMessage = { role: "system", content: systemPrompt };
-  const chatMessages: readonly BackendChatMessage[] = messages.map((message) => {
-    const role: "user" | "assistant" = message.role;
-    return { role, content: message.content };
-  });
+  const trimmedImage: string = imageDataUrl?.trim() ?? "";
+  const hasImage: boolean = trimmedImage.length > 0;
+  const chatMessages: BackendChatMessage[] = [];
+  const lastIndex: number = messages.length - 1;
+  for (let index: number = 0; index < messages.length; index += 1) {
+    const message: UiChatMessage = messages[index];
+    const base: BackendChatMessage = {
+      role: message.role,
+      content: message.content,
+    };
+    if (hasImage && message.role === "user" && index === lastIndex) {
+      const withImage: BackendChatMessage = {
+        ...base,
+        imageDataUrl: trimmedImage,
+      };
+      chatMessages.push(withImage);
+    } else {
+      chatMessages.push(base);
+    }
+  }
   return [systemMessage, ...chatMessages];
 }
 
@@ -888,6 +1056,25 @@ function getCurrentTopic(messages: readonly UiChatMessage[]): string {
     return normalized;
   }
   return `${normalized.slice(0, limit - 1)}…`;
+}
+
+function getChatPlaceholder(mode: AssistantMode, webSearch: boolean): string {
+  if (mode === "text") {
+    if (webSearch) {
+      return "Ask a question about your workspace or the web...";
+    }
+    return "Ask a question or draft a message for your workspace...";
+  }
+  if (mode === "image") {
+    return "Describe the image you want Miro to create...";
+  }
+  if (mode === "both") {
+    return "Ask a question and describe any images you want Miro to create...";
+  }
+  if (webSearch) {
+    return "Ask Miro about your workspace or the web...";
+  }
+  return "Ask Miro about your workspace...";
 }
 
 function createInitialChatState(): ChatState {
