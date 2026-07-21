@@ -10,8 +10,9 @@ import {
   Server,
 } from "lucide-react";
 import PillButton from "../../../../ui/pill-button";
-import type { AiModelFilterTag } from "../../../../_settings-store";
+import type { AiModelFilterTag } from "@miro/core";
 import type { ModelSwitcherOption } from "../../../../shell/types";
+import { modelOptionKey } from "../../../../lib/ai-model-catalog";
 import type { ModelSwitcherPanelProps } from "../../lib/model-switcher-types";
 
 function getFeatureIcon(tag: AiModelFilterTag | "all"): ReactElement {
@@ -213,7 +214,7 @@ export default function ModelSwitcherPanelMobile(
                 : "text-[10px] text-muted-foreground";
               return (
                 <button
-                  key={option.id}
+                  key={modelOptionKey(option.providerId, option.id)}
                   type="button"
                   role="option"
                   aria-selected={active}

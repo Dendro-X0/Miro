@@ -1,5 +1,7 @@
 import type { MetadataRoute } from "next";
 
+export const dynamic = "force-static";
+
 /** Web app manifest for the Miro AI Workspace PWA. */
 export default function manifest(): MetadataRoute.Manifest {
   return {

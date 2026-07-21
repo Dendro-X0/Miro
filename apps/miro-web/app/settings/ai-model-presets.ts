@@ -1,4 +1,4 @@
-import type { AiModelFilterTag } from "../_settings-store";
+import type { AiModelFilterTag } from "@miro/core";
 
 interface AiProviderPreset {
   readonly id: string;

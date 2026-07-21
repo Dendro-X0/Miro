@@ -46,19 +46,22 @@ async function main(): Promise<void> {
   });
 
   await withEnv({ MIRO_AI_PROVIDER: "local", MIRO_AI_API_KEY: undefined }, async () => {
-    let threw: boolean = false;
-    try {
-      getApiConfig();
-    } catch {
-      threw = true;
-    }
-    assert.strictEqual(threw, true);
+    const config: ApiConfig = getApiConfig();
+    assert.strictEqual(config.ai.provider, "local");
+    assert.strictEqual(config.ai.apiKey, null);
+    assert.ok(config.ai.baseUrl.includes("11434"));
   });
 
   await withEnv({ MIRO_AI_PROVIDER: "local", MIRO_AI_API_KEY: "local-key" }, async () => {
     const config: ApiConfig = getApiConfig();
     assert.strictEqual(config.ai.provider, "local");
     assert.strictEqual(config.ai.apiKey, "local-key");
+  });
+
+  await withEnv({ MIRO_AI_PROVIDER: "openai-compatible", MIRO_AI_API_KEY: "sk-test" }, async () => {
+    const config: ApiConfig = getApiConfig();
+    assert.strictEqual(config.ai.provider, "openai-compatible");
+    assert.strictEqual(config.ai.apiKey, "sk-test");
   });
 
   await withEnv({ MIRO_AI_PROVIDER: "anthropic", MIRO_AI_API_KEY: undefined }, async () => {
@@ -70,6 +73,17 @@ async function main(): Promise<void> {
   await withEnv({ MIRO_AI_PROVIDER: undefined, MIRO_AI_API_KEY: undefined }, async () => {
     const config: ApiConfig = getApiConfig();
     assert.strictEqual(config.ai.provider, "mock");
+    assert.strictEqual(config.enableAuth, false);
+  });
+
+  await withEnv({ MIRO_ENABLE_AUTH: "true", MIRO_AI_PROVIDER: "mock" }, async () => {
+    const config: ApiConfig = getApiConfig();
+    assert.strictEqual(config.enableAuth, true);
+  });
+
+  await withEnv({ MIRO_ENABLE_AUTH: "false", MIRO_AI_PROVIDER: "mock" }, async () => {
+    const config: ApiConfig = getApiConfig();
+    assert.strictEqual(config.enableAuth, false);
   });
 
   // eslint-disable-next-line no-console

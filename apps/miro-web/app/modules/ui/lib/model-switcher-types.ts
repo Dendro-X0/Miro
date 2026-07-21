@@ -1,5 +1,5 @@
 import type { ReactElement } from "react";
-import type { AiModelFilterTag } from "../../../_settings-store";
+import type { AiModelFilterTag } from "@miro/core";
 import type { ModelSwitcherOption } from "../../../shell/types";
 
 export interface ModelSwitcherPanelHandlers {

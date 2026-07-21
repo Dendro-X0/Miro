@@ -298,9 +298,11 @@ export default function ChatInputBar(props: ChatInputBarProps): ReactElement {
       />
       <button
         type="button"
-        disabled={sending}
+        disabled={!onAttachImage || sending}
         onClick={handleAttachImageClick}
-        className="flex h-9 w-9 items-center justify-center rounded-2xl border border-surface bg-surface-muted text-foreground hover:border-sky-400/80 hover:text-sky-300 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-muted"
+        className={`flex h-9 w-9 items-center justify-center rounded-2xl border border-surface bg-surface-muted text-foreground hover:border-sky-400/80 hover:text-sky-300 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-muted ${
+          onAttachImage ? "" : "hidden"
+        }`}
       >
         <Paperclip className="h-4 w-4" aria-hidden="true" />
         <span className="sr-only">Attach image</span>

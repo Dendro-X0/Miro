@@ -4,7 +4,7 @@ import type { ReactElement } from "react";
 import { useMemo, useState } from "react";
 import { ChevronDown, Image as ImageIcon, Sparkles } from "lucide-react";
 import type { ModelSwitcherOption, ModelSwitcherProps } from "./types";
-import type { AiModelFilterTag } from "../_settings-store";
+import type { AiModelFilterTag } from "@miro/core";
 import UiKickerLabel from "../ui/kicker-label";
 import ModelSwitcherPanel from "../modules/ui/components/model/model-switcher-panel";
 import ModelSwitcherPanelMobile from "../modules/ui/components/model/model-switcher-panel-mobile";
@@ -79,7 +79,16 @@ function getProviderIcon(providerId: string): ReactElement | null {
 }
 
 export default function ModelSwitcher(props: ModelSwitcherProps): ReactElement {
-  const { value, onChange, imageModelId, onChangeImageModel, options, ready } = props;
+  const {
+    value,
+    onChange,
+    imageModelId,
+    onChangeImageModel,
+    options,
+    selectedProviderId,
+    ready,
+    loading,
+  } = props;
   const { isMobile } = useIsMobile();
   const [open, setOpen] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>("");
@@ -137,21 +146,6 @@ export default function ModelSwitcher(props: ModelSwitcherProps): ReactElement {
     [featureFilter, options, providerFilterId],
   );
 
-  const visibleOptions: readonly ModelSwitcherOption[] = useMemo(
-    (): readonly ModelSwitcherOption[] => {
-      const base: readonly ModelSwitcherOption[] =
-        providerAndFeatureFilteredOptions.length > 0 ? providerAndFeatureFilteredOptions : options;
-      const trimmedQuery: string = searchQuery.trim().toLowerCase();
-      if (!trimmedQuery) {
-        return base;
-      }
-      return base.filter((option: ModelSwitcherOption): boolean => {
-        const combined: string = `${option.label} ${option.providerLabel} ${option.id}`.toLowerCase();
-        return combined.includes(trimmedQuery);
-      });
-    },
-    [options, providerAndFeatureFilteredOptions, searchQuery],
-  );
   const currentTextModel: ModelSwitcherOption | undefined =
     options.find((option: ModelSwitcherOption): boolean => option.id === value) ?? undefined;
   const currentImageModel: ModelSwitcherOption | undefined =
@@ -161,6 +155,51 @@ export default function ModelSwitcher(props: ModelSwitcherProps): ReactElement {
             option.id === imageModelId && option.tags.includes("image"),
         ) ?? undefined
       : undefined;
+
+  const visibleOptions: readonly ModelSwitcherOption[] = useMemo(
+    (): readonly ModelSwitcherOption[] => {
+      const base: readonly ModelSwitcherOption[] =
+        providerAndFeatureFilteredOptions.length > 0 ? providerAndFeatureFilteredOptions : options;
+      const trimmedQuery: string = searchQuery.trim();
+      let filtered = base;
+      if (trimmedQuery) {
+        filtered = base.filter((option: ModelSwitcherOption): boolean => {
+          const combined: string = `${option.label} ${option.providerLabel} ${option.id}`.toLowerCase();
+          return combined.includes(trimmedQuery.toLowerCase());
+        });
+        const providerId =
+          selectedProviderId ??
+          currentTextModel?.providerId ??
+          options.find((option) => option.id === value)?.providerId ??
+          options[0]?.providerId ??
+          "openai-compatible";
+        const providerLabel =
+          providers.find((provider) => provider.id === providerId)?.label ?? "Custom";
+        if (!filtered.some((option) => option.id === trimmedQuery)) {
+          return [
+            {
+              id: trimmedQuery,
+              label: `Use "${trimmedQuery}"`,
+              providerId,
+              providerLabel,
+              tags: ["text"],
+            },
+            ...filtered,
+          ];
+        }
+      }
+      return filtered;
+    },
+    [
+      currentTextModel?.providerId,
+      options,
+      providerAndFeatureFilteredOptions,
+      providers,
+      searchQuery,
+      selectedProviderId,
+      value,
+    ],
+  );
 
   const providerSummaryLabel: string =
     providerFilterId === "all"
@@ -288,6 +327,9 @@ export default function ModelSwitcher(props: ModelSwitcherProps): ReactElement {
       {ready === false && (
         <p className="ml-2 text-[10px] font-medium text-red-400">AI provider not connected</p>
       )}
+      {loading ? (
+        <p className="ml-2 text-[10px] font-medium text-muted-foreground">Refreshing models…</p>
+      ) : null}
       {isMobile ? (
         <ModelSwitcherPanelMobile
           state={panelState}

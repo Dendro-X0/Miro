@@ -1,4 +1,8 @@
-import type { ChatMessage } from "@miro/ai";
+// import type { CoreMessage } from "ai";
+export interface CoreMessage {
+  role: "system" | "user" | "assistant" | "tool";
+  content: string | Array<any>;
+}
 import type { AiModelsConfig } from "./config";
 
 export const AI_HISTORY_MESSAGE_LIMIT: number = 32;
@@ -40,7 +44,7 @@ export function resolveModelId(rawModel: string | undefined, models: AiModelsCon
   return raw;
 }
 
-export function truncateMessagesForV2(messages: readonly ChatMessage[]): readonly ChatMessage[] {
+export function truncateMessagesForV2(messages: readonly CoreMessage[]): readonly CoreMessage[] {
   if (messages.length <= AI_HISTORY_MESSAGE_LIMIT) {
     return messages;
   }

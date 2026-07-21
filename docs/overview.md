@@ -1,20 +1,39 @@
 # Miro Documentation Overview
 
-Miro is a modern, modular PWA for collaborative workspaces and generative AI workflows. The current V1 focuses on a **chat-first AI experience** that can talk and generate images in the same thread, backed by a configurable AI backend.
+Miro is a **private, local-first BYOK AI studio** — a modular client for text and image workflows. Users bring their own API keys or connect to local models; on desktop, keys and chat history stay in the OS keychain and an encrypted vault.
+
+**Release:** [0.2.0](../CHANGELOG.md) · **Start here:** [`getting-started.md`](./getting-started.md) (install → key → first chat, under 10 minutes).
 
 ## Index
 
-- [Stack](./stack.md)
-- [Architecture](./architecture.md)
-- [Usage](./usage.md)
+| Doc | Purpose |
+|-----|---------|
+| [Getting started](./getting-started.md) | Golden path |
+| [Usage](./usage.md) | Env, providers, model discovery, scripts |
+| [Desktop](./desktop.md) | Tauri packaging & release checklist |
+| [Self-hosting](./self-hosting.md) | Lean `@miro/api` |
+| [Stack](./stack.md) | Libraries |
+| [Architecture](./architecture.md) | Apps & data flow |
+| [Architecture modularity](./architecture-modularity.md) | Package boundaries |
 
-## Customization & Roadmap
+## Surfaces
 
-Miro is intentionally small and modular. V1 gives you a solid baseline you can extend:
+| Surface | Role |
+|---------|------|
+| **Desktop** (`miro-desktop`) | Primary product — encrypted vault, keychain, API sidecar |
+| **Web PWA** (`miro-web`) | Demo and UI development — not E2EE |
+| **API** (`@miro/api`) | Lean local AI HTTP; chat, image, model list; optional self-host |
+| **Mobile** (`miro-mobile`) | Expo scaffold only — not a v1 product (deferred) |
 
-- **AI capabilities** – add or swap providers and models via the `@miro/ai` package and the AI configuration in `apps/miro-api`.
-- **Workspace model** – adapt the schema in `@miro/db` to your own domain (boards, documents, flows).
-- **UI shell** – build richer layouts and components in your app clients, or add new main views such as an image workspace.
-- **Integrations** – add third-party integrations to the API layer.
+## What Miro is not
 
-The roadmap beyond V1 can grow from this baseline (for example, dedicated image workspaces or richer activity views) without breaking the existing chat and settings flows described in these docs.
+Miro is intentionally small. v1 does **not** target RAG, multi-user SaaS, agents, or mobile as a product. It integrates with tools like Ollama (and later ComfyUI) via APIs rather than rebuilding them. See the honesty table in [`../README.md`](../README.md).
+
+## Customization
+
+- **AI providers / discovery** — adapters in `@miro/ai`; routes in `apps/miro-api` (`/ai/config`, `/ai/models`, chat, image)
+- **UI shell** — views in `app/modules/ui`, wiring in `app/shell/`
+- **Desktop** — vault / keychain / spawn in `apps/miro-desktop`
+- **Self-hosting** — lean `@miro/api` with `MIRO_AI_*` — [`self-hosting.md`](./self-hosting.md)
+
+See [`ROADMAP.md`](../ROADMAP.md) for v1 scope, anti-goals, and future tiers. See [`CHANGELOG.md`](../CHANGELOG.md) for 0.2.0 notes.

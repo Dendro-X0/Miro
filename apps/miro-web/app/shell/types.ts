@@ -1,6 +1,6 @@
-import type { AiModelFilterTag } from "../_settings-store";
+import type { AiModelFilterTag } from "@miro/core";
 
-export type MainView = "today" | "projects" | "activity" | "settings";
+export type MainView = "today" | "gallery" | "activity" | "settings";
 
 export type AssistantMode = "auto" | "text" | "image" | "both";
 
@@ -38,7 +38,9 @@ export interface ModelSwitcherProps {
   readonly imageModelId?: string;
   readonly onChangeImageModel?: (value: string) => void;
   readonly options: readonly ModelSwitcherOption[];
+  readonly selectedProviderId?: string;
   readonly ready?: boolean;
+  readonly loading?: boolean;
 }
 
 export interface SidebarContentProps {

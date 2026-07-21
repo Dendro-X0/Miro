@@ -1,5 +1,11 @@
 packages:
-  - "apps/miro-api"
-  - "apps/miro-desktop"
-  - "apps/miro-web"
-  - "packages/*"
+  - apps/miro-api
+  - apps/miro-desktop
+  - apps/miro-mobile
+  - apps/miro-desktop
+  - apps/miro-web
+  - packages/*
+
+ignoredBuiltDependencies:
+  - esbuild
+  - sharp

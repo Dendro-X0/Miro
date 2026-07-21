@@ -1,15 +1,16 @@
 "use client";
 
-import type { ChangeEvent, ReactElement } from "react";
-import { useEffect, useState } from "react";
+import type { ReactElement } from "react";
+import { useState } from "react";
 import { Bot, Database, Info, User } from "lucide-react";
-import type { SettingsState, SettingsUpdateInput } from "../_settings-store";
+import type { SettingsState, SettingsUpdateInput } from "@miro/core";
 import ProfileCard from "./profile-card";
-import AiKeysCard, { type AiRuntimeConfig } from "./ai-keys-card";
+import AiKeysCard from "./ai-keys-card";
 import DataCard from "./data-card";
 import AboutCard from "./about-card";
 import PillButton from "../ui/pill-button";
 import UiKickerLabel from "../ui/kicker-label";
+import { useAiModelCatalog } from "../lib/use-ai-model-catalog";
 
 interface SettingsViewProps {
   readonly settings: SettingsState;
@@ -46,54 +47,22 @@ function getSettingsTabIcon(id: SettingsTabId): ReactElement {
   return <Info className="h-3.5 w-3.5" aria-hidden="true" />;
 }
 
-interface AiConfigResponseApi {
-  readonly provider: string;
-  readonly baseUrl: string;
-  readonly models: {
-    readonly fast: string;
-    readonly balanced: string;
-    readonly creative: string;
-  };
-  readonly ready: boolean;
-  readonly runtime?: AiRuntimeConfig;
-}
-
 export default function SettingsView(props: SettingsViewProps): ReactElement {
   const { settings, onUpdate, onReset } = props;
   const { profile, aiView, data } = settings;
   const [activeTab, setActiveTab] = useState<SettingsTabId>(defaultSettingsTabId);
-  const [aiRuntime, setAiRuntime] = useState<AiRuntimeConfig | null>(null);
-  const apiBaseUrl: string =
-		process.env.NEXT_PUBLIC_MIRO_API_BASE_URL ?? "http://localhost:8787";
+  const {
+    runtime: aiRuntime,
+    catalog,
+    loading: catalogLoading,
+    discoveryError,
+    discoveredCount,
+    refresh,
+  } = useAiModelCatalog(aiView);
 
   function handleTabChange(nextId: SettingsTabId): void {
     setActiveTab(nextId);
   }
-
-  useEffect(() => {
-    let active: boolean = true;
-    async function loadAiConfig(): Promise<void> {
-      try {
-				const response: Response = await fetch(`${apiBaseUrl}/ai/config`);
-        if (!response.ok) {
-          return;
-        }
-        const body: AiConfigResponseApi = (await response.json()) as AiConfigResponseApi;
-        if (!active) {
-          return;
-        }
-        if (body.runtime) {
-          setAiRuntime(body.runtime);
-        }
-      } catch {
-        return;
-      }
-    }
-    void loadAiConfig();
-    return () => {
-      active = false;
-    };
-  }, []);
 
   return (
     <section
@@ -140,7 +109,16 @@ export default function SettingsView(props: SettingsViewProps): ReactElement {
       </div>
       <div className="mt-2 flex flex-1 flex-col gap-3 border-t border-surface pt-3 text-sm">
         {activeTab === "aiKeys" && (
-          <AiKeysCard aiView={aiView} aiRuntime={aiRuntime} onUpdate={onUpdate} />
+          <AiKeysCard
+            aiView={aiView}
+            aiRuntime={aiRuntime}
+            catalog={catalog}
+            catalogLoading={catalogLoading}
+            discoveryError={discoveryError}
+            discoveredCount={discoveredCount}
+            onRefreshCatalog={refresh}
+            onUpdate={onUpdate}
+          />
         )}
         {activeTab === "profile" && <ProfileCard profile={profile} onUpdate={onUpdate} />}
         {activeTab === "dataStorage" && (

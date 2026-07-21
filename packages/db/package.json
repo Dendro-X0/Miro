@@ -1,6 +1,6 @@
 {
   "name": "@miro/db",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "main": "src/index.ts",
@@ -23,12 +23,12 @@
     "db:seed": "tsx src/seed.ts"
   },
   "dependencies": {
-    "drizzle-orm": "^0.44.5",
-    "postgres": "^3.4.5"
+    "drizzle-orm": "^0.45.2",
+    "postgres": "^3.4.9"
   },
   "devDependencies": {
-    "drizzle-kit": "^0.31.5",
-    "dotenv": "^16.4.5",
-    "tsx": "^4.20.6"
+    "drizzle-kit": "^0.31.10",
+    "dotenv": "^16.6.1",
+    "tsx": "^4.23.1"
   }
 }

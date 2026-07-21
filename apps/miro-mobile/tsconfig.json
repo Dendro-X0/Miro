@@ -2,9 +2,13 @@
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "jsx": "react-jsx",
-    "types": ["expo"],
-    "baseUrl": "."
+    "types": ["expo-router/types"],
+    "baseUrl": ".",
+    "paths": {
+      "@miro/core": ["../../packages/core/src/index.ts"],
+      "@miro/ui": ["../../packages/ui/src/index.ts"]
+    }
   },
-  "include": ["**/*.ts", "**/*.tsx"],
+  "include": ["**/*.ts", "**/*.tsx", ".expo/types/**/*.ts", "expo-env.d.ts"],
   "exclude": ["node_modules"]
 }

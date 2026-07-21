@@ -1,7 +1,7 @@
 "use client";
 
 import type { ChangeEvent, ReactElement } from "react";
-import type { SettingsState, ThemePreference } from "../_settings-store";
+import type { SettingsState, ThemePreference } from "@miro/core";
 import SettingsCard from "../ui/settings-card";
 
 interface AppearanceCardProps {

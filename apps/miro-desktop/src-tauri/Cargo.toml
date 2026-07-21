@@ -1,10 +1,23 @@
 [package]
 name = "miro-desktop"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 
+[lib]
+name = "miro_desktop_lib"
+crate-type = ["lib"]
+
 [dependencies]
+base64 = "0.22"
+chacha20poly1305 = "0.10"
+keyring = "3"
+rand = "0.8"
+rusqlite = { version = "0.32", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 tauri = { version = "2.5.2", features = [] }
+thiserror = "2"
+uuid = { version = "1", features = ["v4"] }
 
 [build-dependencies]
 tauri-build = { version = "2.5.2", features = [] }

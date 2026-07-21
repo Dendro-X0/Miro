@@ -104,6 +104,23 @@ const activity = pgTable("activity", {
   createdAt: timestamp("created_at").$defaultFn(() => new Date()).notNull(),
 });
 
+const chatSession = pgTable("chat_session", {
+  id: text("id").primaryKey(),
+  title: text("title"),
+  modelId: text("model_id").notNull(),
+  userId: text("user_id").references(() => user.id, { onDelete: "cascade" }), // nullable for anonymous sessions
+  createdAt: timestamp("created_at").$defaultFn(() => new Date()).notNull(),
+  updatedAt: timestamp("updated_at").$defaultFn(() => new Date()).notNull(),
+});
+
+const chatMessage = pgTable("chat_message", {
+  id: text("id").primaryKey(),
+  sessionId: text("session_id").notNull().references(() => chatSession.id, { onDelete: "cascade" }),
+  role: text("role", { enum: ["user", "assistant", "system"] }).notNull(),
+  content: text("content").notNull(), // JSON stringified UIMessage parts
+  createdAt: timestamp("created_at").$defaultFn(() => new Date()).notNull(),
+});
+
 const schema = {
   user,
   session,
@@ -115,6 +132,8 @@ const schema = {
   project,
   organizationInvite,
   activity,
+  chatSession,
+  chatMessage,
 } as const;
 
 export default schema;

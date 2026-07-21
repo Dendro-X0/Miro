@@ -11,6 +11,9 @@ export default function ServiceWorkerRegister(): ReactElement {
     if (process.env.NODE_ENV !== "production") {
       return;
     }
+    if (process.env.NEXT_PUBLIC_MIRO_DESKTOP === "1") {
+      return;
+    }
     if (typeof window === "undefined") {
       return;
     }

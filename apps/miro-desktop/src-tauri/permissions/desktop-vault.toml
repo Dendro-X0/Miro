@@ -1,0 +1,24 @@
+[[permission]]
+identifier = "desktop-vault"
+description = "Encrypted vault and OS keychain access for Miro desktop."
+commands.allow = [
+  "desktop_info",
+  "vault_list_sessions",
+  "vault_create_session",
+  "vault_delete_session",
+  "vault_rename_session",
+  "vault_pin_session",
+  "vault_save_message",
+  "vault_load_messages",
+  "vault_get_session_instructions",
+  "vault_set_session_instructions",
+  "vault_truncate_messages_after",
+  "vault_export_backup",
+  "vault_import_backup",
+  "vault_list_gallery",
+  "vault_save_gallery_asset",
+  "vault_delete_gallery_asset",
+  "keychain_set_secret",
+  "keychain_get_secret",
+  "keychain_delete_secret",
+]

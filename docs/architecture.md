@@ -1,35 +1,69 @@
 # Architecture
 
-Miro is organized as a pnpm monorepo with clear boundaries between apps and shared packages.
+Miro is a pnpm monorepo built as a **private BYOK AI studio**: modular web UI, lean Hono API, and a Tauri desktop shell for encrypted local storage.
+
+**Release:** [0.2.0](../CHANGELOG.md).
 
 ## Monorepo layout
 
-- `apps/miro-web` – Next.js PWA frontend
-- `apps/miro-api` – Hono API
-- `packages/db` – Drizzle schema and DB helper
-- `packages/auth` – Better Auth configuration
-- `packages/ai` – AI integration layer
-- `packages/ui` – shared UI utilities and configuration
+| Path | Role | Status (0.2.0) |
+|------|------|----------------|
+| `apps/miro-web` | Next.js PWA — chat, settings, UI modules | ✅ Demo / primary UI |
+| `apps/miro-api` | Hono API (`@miro/api`) — chat, image, config, model list | ✅ Lean default |
+| `apps/miro-desktop` | Tauri v2 — keychain, vault, API sidecar, packaging | ✅ Primary product |
+| `apps/miro-mobile` | Expo Router — BYOK / sessions scaffold | 🚧 Not a v1 product |
+| `packages/core` | Shared types + API client + settings | ✅ Web + mobile |
+| `packages/ai` | Provider adapters + `listModels` | ✅ Golden path + Anthropic |
+| `packages/auth` | Better Auth | Present; optional API experiment |
+| `packages/db` | Drizzle / Postgres schema | Present; not required for BYOK |
+| `packages/ui` | Design tokens | ✅ Mobile; web has local modules |
 
-## Data and control flow
+```
+┌─────────────────────────────────────────────────────────┐
+│  miro-web (Next.js)                                      │
+│  shell/ — state, routing    modules/ui — components      │
+└───────────────────────────┬─────────────────────────────┘
+                            │ embedded in (static export)
+┌───────────────────────────▼─────────────────────────────┐
+│  miro-desktop (Tauri v2 / Rust)                          │
+│  • OS keychain for API keys                              │
+│  • Encrypted SQLite — sessions, messages, gallery        │
+│  • Spawns lean @miro/api (sidecar / pnpm / node)         │
+└───────────────────────────┬─────────────────────────────┘
+                            │
+         ┌──────────────────┼──────────────────┐
+         ▼                  ▼                  ▼
+   Cloud APIs          Ollama (local)     ComfyUI (local)
+   OpenAI / Anthropic  :11434             deferred (v1.x)
+   Google / OpenRouter
+```
 
-- The `miro-web` frontend calls the Hono API for data and mutations.
-- For V1, the primary calls are AI-related:
-  - `GET /ai/config` to read the resolved provider and logical model IDs.
-  - `POST /v2/ai/chat` and `POST /v2/ai/complete` for text responses.
-  - `POST /v2/ai/image` for image generation.
-- The API layer resolves the AI configuration from environment variables in `apps/miro-api/src/config.ts`.
-- AI endpoints invoke helpers from `@miro/ai` using that configuration.
-- Local settings (profile, appearance, AI view state) are stored on the client via a typed `useSettings` hook and do not require a database.
+## Data and control flow (0.2.0)
+
+1. **Web / desktop UI** calls `@miro/api` (same-origin rewrites in Next; absolute URL in Tauri).
+2. Primary routes:
+   - `GET /ai/config` — resolved provider runtime + env model defaults
+   - `POST /ai/models` — live model discovery (BYOK / env / Ollama)
+   - `POST /api/chat` — streaming text (multipart vision supported)
+   - `POST /v2/ai/image` — image generation (OpenAI-compatible / Google Imagen / mock)
+3. `apps/miro-api/src/config.ts` reads `MIRO_AI_*`; request body may override `provider`, `byokKey`, `baseUrl`, `model`.
+4. Routes invoke `@miro/ai` (`createModel`, `listModels`, image clients).
+5. **Desktop persistence** — Rust vault commands (sessions, messages, gallery, backup, truncate). BYOK in OS keychain.
+6. **Web persistence** — localStorage for chats / gallery / settings (not E2EE). Encrypted backup file optional.
 
 ## Frontend UI architecture
 
-- The main PWA shell lives in `apps/miro-web/app/_app-shell.tsx`.
-- Shell components under `apps/miro-web/app/shell/` manage view state, routing between main views, and data wiring.
-- Presentation and interaction details are implemented in `apps/miro-web/app/modules/ui`:
-  - `components/` – reusable UI pieces such as the model switcher panel, chat input bar, assistant-mode row, chat hero, and error banner.
-  - `hooks/` – UI-focused hooks for scroll behaviour, viewport, and local UI state.
-  - `lib/` – shared UI types and helpers.
-- Shell components are kept intentionally small: they prepare typed props and delegate rendering to `modules/ui` components.
+- **App shell** — `apps/miro-web/app/_app-shell.tsx` composes layout, sidebar, and main views.
+- **`app/shell/`** — thin containers: view state, data fetching, props for UI modules.
+- **`app/modules/ui/`** — presentation (model switcher, chat input, markdown, errors).
+- **`app/lib/`** — history, gallery, backup, model catalog, Tauri bridge.
+- **Settings** — AI & keys (discovery + BYOK base URL), profile, data (backup), about.
 
-As Miro evolves, this document can be expanded with concrete routes, entities, and interaction diagrams.
+## What v1 does not include
+
+- Multi-tenant server, RBAC, or team workspaces
+- RAG, document libraries, or agent/plugin marketplaces
+- Bundled ComfyUI, Python, or CUDA
+- Mobile as a product surface (Expo scaffold only)
+
+See [`ROADMAP.md`](../ROADMAP.md) for phased delivery and [`CHANGELOG.md`](../CHANGELOG.md) for 0.2.0.

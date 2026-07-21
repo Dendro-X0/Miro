@@ -1,5 +1,6 @@
 "use client";
 
+import type { AiRuntimeConfig } from "@miro/core";
 import type { ChangeEvent, ReactElement } from "react";
 import { useState } from "react";
 import { Filter, Image as ImageIcon, Server, Sparkles, Zap } from "lucide-react";
@@ -8,8 +9,9 @@ import type {
   AiModelFilterTag,
   SettingsState,
   SettingsUpdateInput,
-} from "../_settings-store";
-import aiModelConfig from "./ai-model-presets";
+} from "@miro/core";
+import type { CatalogModelOption } from "../lib/ai-model-catalog";
+import { modelOptionKey } from "../lib/ai-model-catalog";
 import PillButton from "../ui/pill-button";
 import UiBadge from "../ui/badge";
 import SettingsCard from "../ui/settings-card";
@@ -31,52 +33,42 @@ interface AiModelOption {
   readonly tags: readonly AiModelFilterTag[];
 }
 
-interface AiRuntimeModel {
-  readonly id: string;
-  readonly alias?: string;
-  readonly kind: "text" | "image";
-  readonly label: string;
-  readonly tags?: readonly string[];
-}
-
-interface AiRuntimeProvider {
-  readonly id: string;
-  readonly label: string;
-  readonly baseUrl: string;
-  readonly models: readonly AiRuntimeModel[];
-  readonly ready: boolean;
-  readonly supportsByok: boolean;
-}
-
-export interface AiRuntimeConfig {
-  readonly defaultProviderId: string;
-  readonly providers: readonly AiRuntimeProvider[];
-}
+export type { AiRuntimeConfig };
 
 interface AiKeysCardProps {
   readonly aiView: SettingsState["aiView"];
   readonly aiRuntime: AiRuntimeConfig | null;
+  readonly catalog: readonly CatalogModelOption[];
+  readonly catalogLoading: boolean;
+  readonly discoveryError: string | null;
+  readonly discoveredCount: number;
+  readonly onRefreshCatalog: () => void;
   readonly onUpdate: (input: SettingsUpdateInput) => void;
 }
 
-const fallbackProviderOptions: readonly AiProviderOption[] = aiModelConfig.providers.map(
-  (provider) => ({
+function getProviderOptionsFromRuntime(runtime: AiRuntimeConfig | null): readonly AiProviderOption[] {
+  if (!runtime || runtime.providers.length === 0) {
+    return [];
+  }
+  return runtime.providers.map((provider) => ({
     id: provider.id,
     label: provider.label,
-    description: provider.description,
+    description: `Models discovered from ${provider.label} when credentials are available.`,
     supportsByok: provider.supportsByok,
-    badge: provider.badge,
-  }),
-);
+    badge: provider.id === runtime.defaultProviderId ? "Default" : undefined,
+  }));
+}
 
-const fallbackModelOptions: readonly AiModelOption[] = aiModelConfig.models.map((model) => ({
-  id: model.id,
-  providerId: model.providerId,
-  label: model.label,
-  description: model.description,
-  tier: model.tier,
-  tags: model.tags,
-}));
+function catalogToModelOptions(catalog: readonly CatalogModelOption[]): readonly AiModelOption[] {
+  return catalog.map((model) => ({
+    id: model.id,
+    providerId: model.providerId,
+    label: model.label,
+    description: model.description,
+    tier: model.tier,
+    tags: model.tags,
+  }));
+}
 
 function getModelFilterIcon(tag: AiModelFilterTag | "all"): ReactElement {
   if (tag === "all") {
@@ -177,26 +169,13 @@ function getProviderLogoIcon(providerId: string): ReactElement | null {
 function getAiOptionsFromRuntime(
   runtime: AiRuntimeConfig | null,
 ): { readonly providers: readonly AiProviderOption[]; readonly models: readonly AiModelOption[] } {
+  const providers = getProviderOptionsFromRuntime(runtime);
   if (!runtime || runtime.providers.length === 0) {
-    return { providers: fallbackProviderOptions, models: fallbackModelOptions };
+    return { providers, models: [] };
   }
-  const providers: AiProviderOption[] = runtime.providers.map((provider) => {
-    const badge: string | undefined =
-      provider.id === runtime.defaultProviderId ? "Default" : undefined;
-    const description: string = `Models configured for ${provider.label}.`;
-    const option: AiProviderOption = {
-      id: provider.id,
-      label: provider.label,
-      description,
-      supportsByok: provider.supportsByok,
-      badge,
-    };
-    return option;
-  });
   const models: AiModelOption[] = [];
   for (const provider of runtime.providers) {
     for (const model of provider.models) {
-      const id: string = model.alias ?? model.id;
       const kindTag: AiModelFilterTag = model.kind === "image" ? "image" : "text";
       const rawTags: readonly string[] = model.tags ?? [];
       const tags: AiModelFilterTag[] = [];
@@ -216,33 +195,39 @@ function getAiOptionsFromRuntime(
       } else if (tags.includes("local")) {
         tier = "local";
       }
-      const option: AiModelOption = {
-        id,
+      models.push({
+        id: model.id,
         providerId: provider.id,
         label: model.label,
         description: model.label,
         tier,
         tags,
-      };
-      models.push(option);
+      });
     }
   }
   return { providers, models };
 }
 
 export default function AiKeysCard(props: AiKeysCardProps): ReactElement {
-  const { aiView, aiRuntime, onUpdate } = props;
+  const {
+    aiView,
+    aiRuntime,
+    catalog,
+    catalogLoading,
+    discoveryError,
+    discoveredCount,
+    onRefreshCatalog,
+    onUpdate,
+  } = props;
   const [customModelId, setCustomModelId] = useState<string>("");
   const [customModelLabel, setCustomModelLabel] = useState<string>("");
   const [customKind, setCustomKind] = useState<"text" | "image">("text");
   const [customTier, setCustomTier] = useState<"default" | "fast" | "quality" | "local">("quality");
   const fromRuntime = getAiOptionsFromRuntime(aiRuntime);
-  const providerOptions: readonly AiProviderOption[] = fromRuntime.providers.length
-    ? fromRuntime.providers
-    : fallbackProviderOptions;
-  const baseModelOptions: readonly AiModelOption[] = fromRuntime.models.length
-    ? fromRuntime.models
-    : fallbackModelOptions;
+  const providerOptions: readonly AiProviderOption[] = fromRuntime.providers;
+  const catalogModelOptions = catalogToModelOptions(catalog);
+  const baseModelOptions: readonly AiModelOption[] =
+    catalogModelOptions.length > 0 ? catalogModelOptions : fromRuntime.models;
   const customModelOptions: readonly AiModelOption[] = aiView.customModels.map(
     (model: AiCustomModel): AiModelOption => ({
       id: model.id,
@@ -254,10 +239,16 @@ export default function AiKeysCard(props: AiKeysCardProps): ReactElement {
     }),
   );
   const modelOptions: readonly AiModelOption[] = [...baseModelOptions, ...customModelOptions];
-  const baseProviderId: string = providerOptions[0]?.id ?? "";
+  const baseProviderId: string = providerOptions[0]?.id ?? aiView.selectedProviderId ?? "google";
   const selectedProviderId: string = aiView.selectedProviderId || baseProviderId;
   const provider: AiProviderOption =
-    providerOptions.find((option) => option.id === selectedProviderId) ?? providerOptions[0];
+    providerOptions.find((option) => option.id === selectedProviderId) ??
+    providerOptions[0] ?? {
+      id: selectedProviderId,
+      label: selectedProviderId,
+      description: "Provider",
+      supportsByok: true,
+    };
   const modelsForProvider: readonly AiModelOption[] = modelOptions.filter(
     (model) => model.providerId === provider.id,
   );
@@ -406,10 +397,26 @@ export default function AiKeysCard(props: AiKeysCardProps): ReactElement {
           </div>
         </div>
         <div>
-          <p className="text-sm font-semibold text-foreground">Models</p>
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-sm font-semibold text-foreground">Models</p>
+            <button
+              type="button"
+              onClick={onRefreshCatalog}
+              disabled={catalogLoading}
+              className="rounded-full border border-surface bg-surface-muted px-3 py-1 text-[11px] text-muted-foreground hover:border-sky-400/80 hover:text-sky-200 disabled:opacity-60"
+            >
+              {catalogLoading ? "Refreshing…" : "Refresh models"}
+            </button>
+          </div>
           <p className="text-xs text-muted-foreground">
-            Pick a model profile for this workspace. Adjust speed versus quality as needed.
+            Models are discovered from your API key, server env, or local Ollama host.{" "}
+            {discoveredCount > 0 ? `${discoveredCount} models loaded for this provider.` : ""}
           </p>
+          {discoveryError ? (
+            <p className="mt-1 text-xs text-amber-300">
+              Discovery fallback: {discoveryError}. Add a custom model ID below or check your key/base URL.
+            </p>
+          ) : null}
           <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
             <PillButton
               variant="primary"
@@ -476,7 +483,7 @@ export default function AiKeysCard(props: AiKeysCardProps): ReactElement {
               const tierIcon: ReactElement | null = getTierIcon(model.tier);
               return (
                 <button
-                  key={model.id}
+                  key={modelOptionKey(model.providerId, model.id)}
                   type="button"
                   onClick={(): void => handleSelectModel(model)}
                   className={active ? activeClasses : inactiveClasses}
@@ -533,6 +540,21 @@ export default function AiKeysCard(props: AiKeysCardProps): ReactElement {
                 />
               </label>
             </div>
+            <label className="mt-3 block text-sm font-medium text-foreground">
+              API base URL (optional)
+              <input
+                type="url"
+                value={aiView.byokBaseUrl ?? ""}
+                onChange={(event: ChangeEvent<HTMLInputElement>): void =>
+                  onUpdate({ aiView: { byokBaseUrl: event.target.value } })
+                }
+                placeholder="https://openrouter.ai/api/v1"
+                className="mt-1 w-full rounded-xl border border-surface bg-surface-muted px-4 py-2.5 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
+              />
+            </label>
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              Use for OpenRouter, Groq, Together, or a remote Ollama host. Leave blank to use the server default.
+            </p>
           </div>
         )}
         <div className="border-t border-surface pt-3 text-xs text-muted-foreground">
@@ -654,6 +676,20 @@ export default function AiKeysCard(props: AiKeysCardProps): ReactElement {
               Add custom model
             </button>
           </div>
+        </div>
+        <div className="mt-4 rounded-2xl border border-surface bg-surface-muted px-4 py-3">
+          <label className="block text-xs font-medium text-muted-foreground">
+            Default system prompt
+            <textarea
+              value={aiView.defaultSystemPrompt ?? ""}
+              onChange={(event: ChangeEvent<HTMLTextAreaElement>): void =>
+                onUpdate({ aiView: { defaultSystemPrompt: event.target.value } })
+              }
+              rows={4}
+              placeholder="Optional instructions applied to every new chat."
+              className="mt-2 w-full resize-y rounded-xl border border-surface bg-surface px-3 py-2 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
+            />
+          </label>
         </div>
       </div>
     </SettingsCard>

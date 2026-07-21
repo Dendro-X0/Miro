@@ -3,7 +3,7 @@
 import type { ReactElement } from "react";
 import { useMemo, useState } from "react";
 import type { ModelSwitcherOption, ModelSwitcherProps } from "./types";
-import type { AiModelFilterTag } from "../_settings-store";
+import type { AiModelFilterTag } from "@miro/core";
 import UiKickerLabel from "../ui/kicker-label";
 import ModelSwitcherPanelMobile from "../modules/ui/components/model/model-switcher-panel-mobile";
 import type {

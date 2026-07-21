@@ -1,385 +1,128 @@
-export type ChatRole = "system" | "user" | "assistant" | "tool";
+import { createAnthropic } from "@ai-sdk/anthropic";
+import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import { createOpenAI } from "@ai-sdk/openai";
+import { type LanguageModel } from "ai";
+import { MockLanguageModelV3 } from "ai/test";
 
-export interface ChatMessageBase {
-  readonly id?: string;
-  readonly role: ChatRole;
-  readonly createdAt?: number;
-}
+import {
+  createAiImageClient,
+  createMockAiImageClient,
+  createOpenAiCompatibleImageClient,
+  createGoogleImagenClient,
+  DEFAULT_OPENAI_BASE_URL as IMAGE_DEFAULT_OPENAI_BASE_URL,
+  type AiImageClient,
+  type AiImageParams,
+  type AiImageResult,
+  type ImageClientConfig,
+} from "./image";
+import {
+  GOLDEN_PATH_PROVIDERS,
+  normalizeProviderId,
+  type AiProviderId,
+} from "./providers";
+import { listModels } from "./list-models";
 
-export interface SystemMessage extends ChatMessageBase {
-  readonly role: "system";
-  readonly content: string;
-}
+export type { AiProviderId };
+export {
+  GOLDEN_PATH_PROVIDERS,
+  normalizeProviderId,
+  createAiImageClient,
+  createMockAiImageClient,
+  createOpenAiCompatibleImageClient,
+  createGoogleImagenClient,
+  listModels,
+};
+export type { AiImageClient, AiImageParams, AiImageResult, ImageClientConfig };
+export type { DiscoveredModel, ListModelsConfig } from "./list-models";
 
-export interface UserMessage extends ChatMessageBase {
-  readonly role: "user";
-  readonly content: string;
-  readonly imageDataUrl?: string;
-}
-
-export interface AssistantMessage extends ChatMessageBase {
-  readonly role: "assistant";
-  readonly content: string;
-  readonly toolCalls?: readonly ToolCall[];
-}
-
-export interface ToolMessage extends ChatMessageBase {
-  readonly role: "tool";
-  readonly toolCallId: string;
-  readonly content: unknown;
-}
-
-export type ChatMessage = SystemMessage | UserMessage | AssistantMessage | ToolMessage;
-
-export interface ToolSchema {
-  readonly name: string;
-  readonly description?: string;
-  readonly parameters?: unknown;
-}
-
-export interface ToolCall {
-  readonly id: string;
-  readonly name: string;
-  readonly arguments: unknown;
-}
-
-export interface ChatCompletionInput {
-  readonly model?: string;
-  readonly messages: readonly ChatMessage[];
-  readonly tools?: readonly ToolSchema[];
-  readonly temperature?: number;
-  readonly maxTokens?: number;
-  readonly metadata?: Readonly<Record<string, unknown>>;
-}
-
-export interface ChatCompletionChoice {
-  readonly index: number;
-  readonly message: ChatMessage;
-  readonly finishReason?: "stop" | "length" | "tool_calls" | string;
-}
-
-export interface ChatCompletionResponse {
-  readonly id?: string;
-  readonly createdAt?: number;
-  readonly model?: string;
-  readonly choices: readonly ChatCompletionChoice[];
-  readonly usage?: {
-    readonly promptTokens?: number;
-    readonly completionTokens?: number;
-    readonly totalTokens?: number;
-  };
-}
-
-export interface ChatCompletionChunk {
-  readonly id?: string;
-  readonly createdAt?: number;
-  readonly model?: string;
-  readonly choice: {
-    readonly index: number;
-    readonly delta: Partial<ChatMessage>;
-    readonly finishReason?: "stop" | "length" | "tool_calls" | string;
-  };
-}
-
-export interface ChatProvider {
-  readonly createChatCompletion: (input: ChatCompletionInput) => Promise<ChatCompletionResponse>;
-  readonly streamChatCompletion?: (input: ChatCompletionInput) => AsyncIterable<ChatCompletionChunk>;
-}
-
-export interface AiCompletionParams {
-  readonly model: string;
-  readonly prompt: string;
-}
-
-export interface AiCompletionResult {
-  readonly text: string;
-}
-
-export interface AiClient {
-  readonly provider: ChatProvider;
-  readonly generateCompletion: (params: AiCompletionParams) => Promise<AiCompletionResult>;
-}
-
-export interface AiImageParams {
-  readonly model: string;
-  readonly prompt: string;
-  readonly size?: string;
-  readonly count?: number;
-}
-
-export interface AiImageResult {
-  readonly url: string;
-}
-
-export interface AiImageClient {
-  readonly generateImages: (params: AiImageParams) => Promise<readonly AiImageResult[]>;
-}
-
-export interface OpenAiClientConfig {
-  readonly baseUrl: string;
+export interface ModelConfig {
+  readonly provider: string;
   readonly apiKey: string;
+  readonly modelId: string;
+  /** OpenAI-compatible base URL (e.g. OpenRouter, Groq, Ollama). */
+  readonly baseUrl?: string;
 }
 
-export function createMockChatProvider(): ChatProvider {
-  async function createChatCompletion(input: ChatCompletionInput): Promise<ChatCompletionResponse> {
-    const lastUser: UserMessage | undefined = input.messages
-      .slice()
-      .reverse()
-      .find((message) => message.role === "user") as UserMessage | undefined;
-    const previewSource: string = lastUser?.content ?? "";
-    const trimmed: string = previewSource.trim();
-    const preview: string = trimmed.length > 64 ? `${trimmed.slice(0, 61)}...` : trimmed;
-    const modelName: string = input.model ?? "mock-model";
-    const content: string = preview
-      ? `Mock response from ${modelName}: ${preview}`
-      : `Mock response from ${modelName}: (no user content)`;
-    const message: AssistantMessage = { role: "assistant", content };
-    const choice: ChatCompletionChoice = { index: 0, message };
-    return { choices: [choice] };
+export const DEFAULT_OPENAI_BASE_URL = IMAGE_DEFAULT_OPENAI_BASE_URL;
+export const DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434/v1";
+export const DEFAULT_ANTHROPIC_BASE_URL = "https://api.anthropic.com/v1";
+
+function createOpenAiCompatibleModel(config: ModelConfig): LanguageModel {
+  const baseURL =
+    config.baseUrl?.trim() ||
+    (normalizeProviderId(config.provider) === "local"
+      ? DEFAULT_OLLAMA_BASE_URL
+      : DEFAULT_OPENAI_BASE_URL);
+  const apiKey =
+    config.apiKey.trim().length > 0
+      ? config.apiKey
+      : normalizeProviderId(config.provider) === "local"
+        ? "ollama"
+        : config.apiKey;
+
+  if (normalizeProviderId(config.provider) !== "local" && apiKey.length === 0) {
+    throw new Error("API key is required for OpenAI-compatible providers");
   }
-  return { createChatCompletion };
-}
 
-export function createMockAiClient(): AiClient {
-  const provider: ChatProvider = createMockChatProvider();
-  async function generateCompletion(params: AiCompletionParams): Promise<AiCompletionResult> {
-    const system: SystemMessage = { role: "system", content: "You generate short textual responses." };
-    const user: UserMessage = { role: "user", content: params.prompt };
-    const input: ChatCompletionInput = { model: params.model, messages: [system, user] };
-    const response: ChatCompletionResponse = await provider.createChatCompletion(input);
-    const firstChoice: ChatCompletionChoice | undefined = response.choices[0];
-    const text: string = (firstChoice?.message as AssistantMessage | undefined)?.content ?? "";
-    return { text };
-  }
-  return { provider, generateCompletion };
-}
-
-interface OpenAiImageUrl {
-  readonly url: string;
-}
-
-interface OpenAiTextContentPart {
-  readonly type: "text";
-  readonly text: string;
-}
-
-interface OpenAiImageUrlContentPart {
-  readonly type: "image_url";
-  readonly image_url: OpenAiImageUrl;
-}
-
-type OpenAiContentPart = OpenAiTextContentPart | OpenAiImageUrlContentPart;
-
-interface OpenAiChatMessage {
-  readonly role: "system" | "user" | "assistant";
-  readonly content: string | readonly OpenAiContentPart[];
-}
-
-interface OpenAiChatCompletionChoice {
-  readonly index: number;
-  readonly message: OpenAiChatMessage;
-  readonly finish_reason?: string;
-}
-
-interface OpenAiChatCompletionUsage {
-  readonly prompt_tokens?: number;
-  readonly completion_tokens?: number;
-  readonly total_tokens?: number;
-}
-
-interface OpenAiChatCompletionResponseBody {
-  readonly id?: string;
-  readonly created?: number;
-  readonly model?: string;
-  readonly choices: readonly OpenAiChatCompletionChoice[];
-  readonly usage?: OpenAiChatCompletionUsage;
-}
-
-function buildOpenAiUrl(config: OpenAiClientConfig): string {
-  const base: string = config.baseUrl.endsWith("/") ? config.baseUrl.slice(0, -1) : config.baseUrl;
-  return `${base}/chat/completions`;
-}
-
-function mapToOpenAiMessages(messages: readonly ChatMessage[]): readonly OpenAiChatMessage[] {
-  const result: OpenAiChatMessage[] = [];
-  for (const message of messages) {
-    if (message.role === "system") {
-      const systemMessage: SystemMessage = message as SystemMessage;
-      const systemItem: OpenAiChatMessage = { role: "system", content: systemMessage.content };
-      result.push(systemItem);
-    } else if (message.role === "user") {
-      const userMessage: UserMessage = message as UserMessage;
-      const content: string | readonly OpenAiContentPart[] = createOpenAiUserContent(userMessage);
-      const userItem: OpenAiChatMessage = { role: "user", content };
-      result.push(userItem);
-    } else if (message.role === "assistant") {
-      const assistantMessage: AssistantMessage = message as AssistantMessage;
-      const assistantItem: OpenAiChatMessage = {
-        role: "assistant",
-        content: assistantMessage.content,
-      };
-      result.push(assistantItem);
-    }
-  }
-  return result;
-}
-
-function createOpenAiUserContent(message: UserMessage): string | readonly OpenAiContentPart[] {
-  const trimmedImageDataUrl: string = message.imageDataUrl?.trim() ?? "";
-  if (trimmedImageDataUrl.length === 0) {
-    return message.content;
-  }
-  const parts: OpenAiContentPart[] = [
-    { type: "text", text: message.content },
-    { type: "image_url", image_url: { url: trimmedImageDataUrl } },
-  ];
-  return parts;
-}
-
-function mapFromOpenAiResponse(body: OpenAiChatCompletionResponseBody): ChatCompletionResponse {
-  const choices: ChatCompletionChoice[] = body.choices.map((choice) => {
-    const message: ChatMessage = {
-      role: choice.message.role,
-      content: choice.message.content,
-    } as AssistantMessage | SystemMessage | UserMessage;
-    const mapped: ChatCompletionChoice = {
-      index: choice.index,
-      message,
-      finishReason: choice.finish_reason,
-    };
-    return mapped;
+  const openai = createOpenAI({
+    apiKey: apiKey.length > 0 ? apiKey : "ollama",
+    baseURL,
   });
-  const usageBody: OpenAiChatCompletionUsage | undefined = body.usage;
-  const usageMapped: ChatCompletionResponse["usage"] | undefined = usageBody
-    ? {
-        promptTokens: usageBody.prompt_tokens,
-        completionTokens: usageBody.completion_tokens,
-        totalTokens: usageBody.total_tokens,
-      }
-    : undefined;
-  const response: ChatCompletionResponse = {
-    id: body.id,
-    createdAt: body.created,
-    model: body.model,
-    choices,
-    usage: usageMapped,
-  };
-  return response;
+  return openai(config.modelId);
 }
 
-export function createOpenAiChatProvider(config: OpenAiClientConfig): ChatProvider {
-  const url: string = buildOpenAiUrl(config);
+function createMockModel(): LanguageModel {
+  return new MockLanguageModelV3({
+    doStream: async () => ({
+      stream: new ReadableStream({
+        start(controller) {
+          controller.enqueue({
+            type: "text-delta",
+            id: "text-1",
+            delta: "Hello! I am a mock AI assistant. ",
+          });
+          controller.enqueue({
+            type: "text-delta",
+            id: "text-1",
+            delta: "How can I help you today?",
+          });
+          controller.close();
+        },
+      }),
+      warnings: [],
+    }),
+  });
+}
 
-  async function createChatCompletion(input: ChatCompletionInput): Promise<ChatCompletionResponse> {
-    const messages: readonly OpenAiChatMessage[] = mapToOpenAiMessages(input.messages);
-    const requestBody: Readonly<Record<string, unknown>> = {
-      model: input.model,
-      messages,
-      temperature: input.temperature,
-      max_tokens: input.maxTokens,
-    };
-    const headers: Readonly<Record<string, string>> = {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${config.apiKey}`,
-    };
-    const response = await fetch(url, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(requestBody),
+export function createModel(config: ModelConfig): LanguageModel {
+  const provider = normalizeProviderId(config.provider);
+
+  if (provider === "mock") {
+    return createMockModel();
+  }
+
+  if (provider === "google") {
+    if (!config.apiKey.trim()) {
+      throw new Error("API key is required for Google provider");
+    }
+    const google = createGoogleGenerativeAI({ apiKey: config.apiKey });
+    return google(config.modelId);
+  }
+
+  if (provider === "anthropic") {
+    if (!config.apiKey.trim()) {
+      throw new Error("API key is required for Anthropic provider");
+    }
+    const anthropic = createAnthropic({
+      apiKey: config.apiKey,
+      baseURL: config.baseUrl?.trim() || DEFAULT_ANTHROPIC_BASE_URL,
     });
-    if (!response.ok) {
-      throw new Error(`OpenAI chat completion failed with status ${response.status}`);
-    }
-    const rawBody: unknown = await response.json();
-    const body: OpenAiChatCompletionResponseBody = rawBody as OpenAiChatCompletionResponseBody;
-    return mapFromOpenAiResponse(body);
+    return anthropic(config.modelId);
   }
 
-  const provider: ChatProvider = { createChatCompletion };
-  return provider;
-}
-
-export function createOpenAiAiClient(config: OpenAiClientConfig): AiClient {
-  const provider: ChatProvider = createOpenAiChatProvider(config);
-
-  async function generateCompletion(params: AiCompletionParams): Promise<AiCompletionResult> {
-    const system: SystemMessage = { role: "system", content: "You generate short textual responses." };
-    const user: UserMessage = { role: "user", content: params.prompt };
-    const input: ChatCompletionInput = { model: params.model, messages: [system, user] };
-    const response: ChatCompletionResponse = await provider.createChatCompletion(input);
-    const firstChoice: ChatCompletionChoice | undefined = response.choices[0];
-    const assistantChoice: AssistantMessage | undefined = firstChoice?.message as AssistantMessage | undefined;
-    const text: string = assistantChoice?.content ?? "";
-    const result: AiCompletionResult = { text };
-    return result;
+  if (provider === "openai" || provider === "openai-compatible" || provider === "local") {
+    return createOpenAiCompatibleModel(config);
   }
 
-  const client: AiClient = { provider, generateCompletion };
-  return client;
-}
-
-export function createMockAiImageClient(): AiImageClient {
-  async function generateImages(params: AiImageParams): Promise<readonly AiImageResult[]> {
-    const countRaw: number = params.count ?? 1;
-    const count: number = countRaw > 0 && countRaw <= 8 ? countRaw : 1;
-    const baseUrl: string = "https://placehold.co/512x512";
-    const items: AiImageResult[] = [];
-    for (let index: number = 0; index < count; index += 1) {
-      const url: string = `${baseUrl}?text=Miro+Mock+Image+${index + 1}`;
-      items.push({ url });
-    }
-    return items;
-  }
-  const client: AiImageClient = { generateImages };
-  return client;
-}
-
-interface OpenAiImageGenerationResultBody {
-  readonly url?: string;
-  readonly b64_json?: string;
-}
-
-interface OpenAiImageGenerationResponseBody {
-  readonly data: readonly OpenAiImageGenerationResultBody[];
-}
-
-export function createOpenAiImageClient(config: OpenAiClientConfig): AiImageClient {
-  const base: string = config.baseUrl.endsWith("/") ? config.baseUrl.slice(0, -1) : config.baseUrl;
-  const url: string = `${base}/images/generations`;
-
-  async function generateImages(params: AiImageParams): Promise<readonly AiImageResult[]> {
-    const countRaw: number = params.count ?? 1;
-    const count: number = countRaw > 0 && countRaw <= 8 ? countRaw : 1;
-    const size: string | undefined = params.size;
-    const requestBody: Readonly<Record<string, unknown>> = {
-      model: params.model,
-      prompt: params.prompt,
-      n: count,
-      size,
-    };
-    const headers: Readonly<Record<string, string>> = {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${config.apiKey}`,
-    };
-    const response = await fetch(url, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(requestBody),
-    });
-    if (!response.ok) {
-      throw new Error(`OpenAI image generation failed with status ${response.status}`);
-    }
-    const rawBody: unknown = await response.json();
-    const body: OpenAiImageGenerationResponseBody = rawBody as OpenAiImageGenerationResponseBody;
-    const images: AiImageResult[] = [];
-    for (const item of body.data) {
-      if (item.url) {
-        images.push({ url: item.url });
-      }
-    }
-    return images;
-  }
-
-  const client: AiImageClient = { generateImages };
-  return client;
+  throw new Error(`Unsupported provider: ${config.provider}`);
 }

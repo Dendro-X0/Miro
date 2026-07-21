@@ -1,83 +1,124 @@
 # Miro Workspace
 
-Miro is a **PWA-first AI workspace** for chat and image generation that you can run locally, fork, and extend.
+Miro is a **private, local-first BYOK AI studio** — a fast, encrypted client for text and image workflows. Bring your own API keys or connect to local models (Ollama); your keys and chat history stay on your device.
 
-The current **public V1 (beta)** release ships a web PWA plus a small AI backend that you configure with environment variables. Desktop and mobile shells are experimental and part of the roadmap, not required for V1.
+**Current release:** [0.2.0](./CHANGELOG.md) — Tauri desktop packaging, dynamic model discovery, Anthropic, vision, backups. The web PWA remains a **demo and dev** surface. See [`ROADMAP.md`](./ROADMAP.md).
 
 ![Project Thumbnail](apps/miro-web/public/chat_1.png)
 ![Lighthouse](apps/miro-web/public/lighthouse.png)
 
 ---
 
-## Features
+## What Miro is
 
-- **Chat-first AI workspace** – conversational UI that combines text and image generation in a single thread.
-- **Model switcher** – quick access to multiple providers and models, with provider and capability filters.
-- **Assistant modes** – Auto / Text / Image / Text + image chips plus a Web search toggle to control how Miro responds.
-- **Voice and image input** – optional voice dictation and local image attachment in the chat input bar.
-- **Responsive PWA shell** – mobile-friendly header, sidebar, and chat layout you can install as a PWA.
-- **Configurable backend** – AI provider and model presets wired through a small Hono API.
+- A **small, modular** AI client — not Docker-heavy platform software
+- **BYOK** — OpenAI-compatible, Anthropic, Google, and Ollama via thin adapters
+- **Privacy-first** — desktop keys in the OS keychain; encrypted chat + gallery vault
+- **Desktop-native** — Tauri v2 installer (`pnpm desktop:release`)
+- **Open source** (MIT) — optional coffee-price pre-built desktop builds
+
+## What Miro is not
+
+Be clear before you clone:
+
+| Not this | Instead |
+|----------|---------|
+| Open WebUI / LibreChat competitor | No RAG, agents, tool hubs, or multi-user SaaS in v1 |
+| Multi-tenant AI platform | Single-user client; Postgres/auth is optional experiment only |
+| ComfyUI / Stable Diffusion suite | Image via cloud APIs in v1; ComfyUI bridge deferred |
+| Mobile product in v1 | Expo scaffold exists for experiments; **desktop** is the product |
+| Hosted “Miro cloud” | You run it locally; optional self-host of lean `@miro/api` |
 
 ---
 
-## Quick start
+## Features
 
-1. Install Node.js `>= 20.19.0` and [pnpm](https://pnpm.io/).
-2. From the `miro/` root, install dependencies:
+- **Chat-first workspace** — text and image in one thread; streaming markdown
+- **Dynamic models** — discover models from your API key, base URL, or local Ollama
+- **BYOK + base URL** — OpenAI, OpenRouter, Groq, Anthropic, Google, Ollama
+- **Vision** — attach images on supported providers
+- **Regenerate / edit** — redo the last turn or revise a user message
+- **System prompts** — global defaults + per-chat instructions
+- **Export & backup** — Markdown export; passphrase-encrypted backup of chats + gallery
+- **Desktop vault** — encrypted SQLite sessions + gallery; OS keychain for secrets
+- **API images + Gallery** — OpenAI-compatible + Google Imagen
+- **Web PWA** — installable demo/dev shell (browser storage, not E2EE)
 
-   ```bash
-   pnpm install
-   ```
+---
 
-3. Follow [`docs/usage.md`](./docs/usage.md) to configure AI environment variables and run:
+## Quick start (golden path)
 
-   ```bash
-   pnpm dev --filter @miro/api
-   pnpm dev --filter miro-web
-   ```
+**Under 10 minutes:** [`docs/getting-started.md`](./docs/getting-started.md)
 
-   Then open `http://localhost:3000` and use Miro in your browser or install it as a PWA.
+```bash
+pnpm install
+
+# Desktop (recommended — privacy story)
+pnpm desktop:dev
+
+# Or web demo
+pnpm dev   # @miro/api :8787 + miro-web :3100
+
+# Release installer (unsigned)
+pnpm desktop:release
+```
+
+OpenAI-compatible, Anthropic, Google, or Ollama examples: [`docs/getting-started.md`](./docs/getting-started.md) and [`docs/usage.md`](./docs/usage.md).
 
 ---
 
 ## Architecture (high level)
 
-- **Monorepo** – managed with pnpm workspaces and Turbo.
-- **Apps** – `apps/miro-web` (Next.js PWA) and `apps/miro-api` (Hono API).
-- **Packages** – shared libraries under `packages/` for DB, auth, and AI integration.
-- **Frontend UI** – a modular UI layer inside `apps/miro-web/app/modules/ui`:
-  - `components/` – presentational components (model switcher panel, chat input bar, hero, error banner, assistant-mode row).
-  - `hooks/` – UI-focused hooks (viewport, scroll, state helpers).
-  - `lib/` – shared UI types and helpers.
-- **Shell vs. UI** – files under `apps/miro-web/app/shell/` are thin containers that manage state and call into `modules/ui` components.
+- **Monorepo** — pnpm workspaces and Turbo
+- **Apps**
+  - `apps/miro-desktop` — Tauri v2 (primary product)
+  - `apps/miro-web` — Next.js PWA (demo / UI development)
+  - `apps/miro-api` — lean Hono API (`@miro/api`) for chat, image, model list
+  - `apps/miro-mobile` — Expo scaffold (not v1 product; deferred)
+- **Packages** — `@miro/core`, `@miro/ai`, `@miro/ui` (+ optional `@miro/db` / `@miro/auth`)
+
+```
+miro-web (Next.js)  →  UI, settings, chat
+       ↓ embeds
+miro-desktop (Tauri) →  keychain, encrypted SQLite, API sidecar
+       ↓
+packages/ai          →  thin provider adapters + model discovery
+miro-api (Hono)      →  lean local AI HTTP (optional self-host)
+```
 
 ---
 
 ## Docs
 
-Most details now live under [`docs/`](./docs):
-
-- [`overview.md`](./docs/overview.md) – what Miro is and how to extend it.
-- [`usage.md`](./docs/usage.md) – local setup, environment, and development workflow.
-- [`stack.md`](./docs/stack.md) – libraries and tooling used across the monorepo.
-- [`architecture.md`](./docs/architecture.md) – apps, packages, and data/control flow.
-
-Release notes and roadmap:
-
-- [`CHANGELOG.md`](./CHANGELOG.md) – notable changes across public releases.
-- [`ROADMAP.md`](./ROADMAP.md) – planned work beyond the current PWA-first beta.
+| Doc | Purpose |
+|-----|---------|
+| [`docs/getting-started.md`](./docs/getting-started.md) | Install → key → first chat |
+| [`docs/usage.md`](./docs/usage.md) | Env vars, providers, discovery, scripts |
+| [`docs/desktop.md`](./docs/desktop.md) | Tauri packaging, release checklist, signing |
+| [`docs/self-hosting.md`](./docs/self-hosting.md) | Lean `@miro/api` self-host |
+| [`docs/overview.md`](./docs/overview.md) | Product overview & extension |
+| [`docs/architecture.md`](./docs/architecture.md) | Apps, packages, and data flow |
+| [`docs/stack.md`](./docs/stack.md) | Libraries and tooling |
+| [`ROADMAP.md`](./ROADMAP.md) | Phases, anti-goals, tiers |
+| [`CHANGELOG.md`](./CHANGELOG.md) | Release history |
 
 ---
 
-## V1 scope
+## Release scope (0.2.0)
 
-- **Supported surface:** web PWA (`apps/miro-web`) plus AI API (`apps/miro-api`).
-- **Experimental:** desktop (`apps/miro-desktop`) and mobile (`apps/miro-mobile`) shells are not required for V1 and may change.
+| Surface | Status |
+|---------|--------|
+| Tauri desktop | ✅ Primary product (vault, keychain, packaging) |
+| Web PWA (`miro-web`) | ✅ Demo / dev — not the privacy story |
+| AI API (`@miro/api`) | ✅ Lean BYOK self-host + model discovery |
+| Mobile (`miro-mobile`) | 🚧 Expo scaffold only — not a v1 product |
+
+Full roadmap: [`ROADMAP.md`](./ROADMAP.md).
 
 ---
 
 ## License
 
-Miro Workspace is open-source software licensed under the **MIT License**. See [`LICENSE`](./LICENSE) for the full text.
+Miro Workspace is open-source software under the **MIT License**. See [`LICENSE`](./LICENSE).
 
-You are free to use, modify, and self-host Miro, including as part of a commercial or SaaS offering, subject to the terms of the MIT License.
+You may use, modify, and self-host Miro, including in commercial offerings, subject to the MIT License terms.

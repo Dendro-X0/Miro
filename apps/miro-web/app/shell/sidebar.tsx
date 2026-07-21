@@ -4,7 +4,7 @@ import type { ChangeEvent, ReactElement } from "react";
 import { useState } from "react";
 import {
   Clock3,
-  FolderKanban,
+  ImageIcon,
   MessageCircle,
   MoreHorizontal,
   Pin,
@@ -32,9 +32,9 @@ const items: readonly SidebarItem[] = [
     icon: <MessageCircle className="h-3.5 w-3.5" aria-hidden="true" />,
   },
   {
-    id: "projects",
-    label: "Projects",
-    icon: <FolderKanban className="h-3.5 w-3.5" aria-hidden="true" />,
+    id: "gallery",
+    label: "Gallery",
+    icon: <ImageIcon className="h-3.5 w-3.5" aria-hidden="true" />,
   },
   {
     id: "activity",

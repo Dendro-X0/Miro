@@ -3,13 +3,18 @@ import type { AppContext, AppInstance } from "../types";
 
 interface HealthRouteDeps {
   readonly app: AppInstance;
-  readonly db: Db;
+  readonly db: Db | null;
+  readonly enableAuth: boolean;
 }
 
 export function registerHealthRoutes(params: HealthRouteDeps): void {
-  const { app, db } = params;
+  const { app, db, enableAuth } = params;
   app.get("/health", (context: AppContext) => {
-    const ok: boolean = Boolean(db);
-    return context.json({ ok } as const);
+    return context.json({
+      ok: true,
+      mode: enableAuth ? "full" : "lean",
+      auth: enableAuth,
+      db: db !== null,
+    } as const);
   });
 }

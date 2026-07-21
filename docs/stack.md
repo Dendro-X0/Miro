@@ -1,37 +1,65 @@
 # Stack
 
-Miro builds on a TypeScript-first stack optimized for a modular, AI-enabled PWA.
+Miro is a TypeScript-first monorepo optimized for a **small, modular BYOK AI client** — Tauri desktop first, web PWA for demo/dev.
+
+**Release:** [0.2.0](../CHANGELOG.md).
 
 ## Frontend
 
-- Next.js 16 App Router (`apps/miro-web`)
-- React Server Components where appropriate
-- Tailwind CSS v4 for styling
-- Modular UI layer under `apps/miro-web/app/modules/ui` for shared components, hooks, and UI types
+- **Next.js 16** App Router (`apps/miro-web`) — chat shell, settings, PWA / static desktop export
+- **React 19** — streaming chat and interactive settings
+- **Tailwind CSS v4** — styling
+- **Modular UI** — `apps/miro-web/app/modules/ui`; `app/shell/` for wiring; `app/lib/` for catalog, vault bridge, backup
 
-## API
+## Desktop
 
-- Hono (`apps/miro-api`) as a lightweight HTTP server
-- JSON endpoints for AI chat and image generation, plus future workspace and activity APIs
+- **Tauri v2** (`apps/miro-desktop`) — native shell (~50 MB installer target)
+- **Rust** — OS keychain, encrypted SQLite vault, API process spawn
+- Embeds the same web UI; release builds use Next `output: 'export'` + API sidecar
+- Packaging: [`desktop.md`](./desktop.md) (`pnpm desktop:dev` / `desktop:release`)
 
-## Authentication
+## API (optional self-host)
 
-- Better Auth (`@miro/auth`) for email/password and optional social logins
-
-## Database
-
-- Postgres with Drizzle ORM (`@miro/db`)
-- Multi-tenant pattern based on users, workspaces, memberships, and activity
+- **Hono** (`apps/miro-api`, `@miro/api`) — lean HTTP for web demo, desktop spawn, and self-hosting
+- Routes: AI config, model list, chat streaming, image generation
+- Env-driven provider config (`MIRO_AI_*`)
 
 ## AI
 
-- `@miro/ai` package as the integration layer to external AI providers
-  - Includes a mock client for local development
-  - Wraps OpenAI-compatible providers and can be extended for Anthropic, Google, local, or other backends
-  - Powers `/v2/ai/chat`, `/v2/ai/complete`, and `/v2/ai/image` routes used by the PWA
+- **`@miro/ai`** — thin provider adapters + `listModels`
+  - **Golden path:** mock, Google Gemini, OpenAI-compatible, Ollama (`local`), Anthropic
+- **Vercel AI SDK** (`ai` v6 / `@ai-sdk` v3) — streaming text in `@miro/api`
+- Image: OpenAI-compatible `/images/generations` + Google Imagen; ComfyUI deferred
+
+## Storage & privacy
+
+| Layer | Web (demo/dev) | Desktop (product) |
+|-------|----------------|-------------------|
+| Settings / BYOK | localStorage | OS keychain + encrypted vault metadata |
+| Chat / gallery | localStorage | Encrypted SQLite vault |
+| Backup | Passphrase-encrypted file | Same (export/import vault) |
+| Server DB | Not used for chat | Not required |
+
+## Shared client layer
+
+- **`@miro/core`** — types, `MiroApiClient` (`fetchConfig`, `listModels`, chat, image), settings helpers
+- **`@miro/ui`** — design tokens (used by Expo scaffold)
+
+## Packages present but out of v1 client path
+
+- **`@miro/auth`** / **`@miro/db`** — optional when `MIRO_ENABLE_AUTH=true`; not required for BYOK desktop
 
 ## Tooling
 
-- pnpm workspaces
-- Turbo for dev/build/typecheck orchestration
-- TypeScript in strict mode
+- **pnpm** workspaces · **Turbo** · **TypeScript** 5.9
+- **CodaCtrl** (external) — optional desktop performance profiling
+
+## Platforms
+
+| Surface | Stack | 0.2.0 |
+|---------|-------|:-----:|
+| Web PWA | Next.js | Demo / dev |
+| Desktop | Tauri v2 + Rust | Primary product |
+| Mobile | Expo SDK 54 scaffold | 🚧 Deferred |
+
+See [`ROADMAP.md`](../ROADMAP.md) for anti-goals and future tiers.

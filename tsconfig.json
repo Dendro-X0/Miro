@@ -19,6 +19,8 @@
       "@miro/auth/*": ["packages/auth/src/*"],
       "@miro/ai": ["packages/ai/src/index.ts"],
       "@miro/ai/*": ["packages/ai/src/*"],
+      "@miro/core": ["packages/core/src/index.ts"],
+      "@miro/core/*": ["packages/core/src/*"],
       "@miro/ui": ["packages/ui/src/index.ts"],
       "@miro/ui/*": ["packages/ui/src/*"]
     }

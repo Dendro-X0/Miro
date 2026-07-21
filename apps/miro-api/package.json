@@ -1,6 +1,6 @@
 {
   "name": "@miro/api",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "main": "src/run.ts",
@@ -11,15 +11,18 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test:ai-config": "tsx test/ai-config.test.ts",
     "test:ai-helpers": "tsx test/ai-helpers.test.ts",
+    "test:ai-stream": "tsx --test test/ai-stream.test.ts",
     "test:ai-v2": "tsx test/ai-v2.test.ts",
-    "test": "pnpm -s test:ai-config && pnpm -s test:ai-helpers"
+    "test": "pnpm -s test:ai-config && pnpm -s test:ai-helpers && pnpm -s test:ai-stream && pnpm -s test:ai-v2"
   },
   "dependencies": {
-    "@hono/node-server": "^1.13.7",
-    "hono": "^4.6.6",
-    "@miro/db": "workspace:*",
+    "@ai-sdk/google": "^3.0.98",
+    "@hono/node-server": "^1.19.7",
     "@miro/ai": "workspace:*",
     "@miro/auth": "workspace:*",
-    "drizzle-orm": "^0.44.5"
+    "@miro/db": "workspace:*",
+    "ai": "^6.0.1",
+    "drizzle-orm": "^0.45.2",
+    "hono": "^4.12.31"
   }
 }

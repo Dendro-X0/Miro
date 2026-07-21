@@ -1,4 +1,4 @@
-export type AiProviderName = "mock" | "openai" | "anthropic" | "google" | "local";
+export type AiProviderName = "mock" | "openai" | "openai-compatible" | "anthropic" | "google" | "local";
 
 export interface AiModelsConfig {
   readonly fast: string;
@@ -41,12 +41,15 @@ export interface AiConfig {
 export interface ApiConfig {
   readonly port: number;
   readonly authBaseUrl: string;
+  /** When false (default), skip Postgres/Better Auth and multi-user routes — lean BYOK self-host. */
+  readonly enableAuth: boolean;
   readonly ai: AiConfig;
 }
 
 const defaultPort: number = 8787;
 const defaultAiProvider: AiProviderName = "mock";
 const defaultAiBaseUrl: string = "https://api.openai.com/v1";
+const defaultOllamaBaseUrl: string = "http://localhost:11434/v1";
 
 function parsePort(rawPort: string | undefined): number {
   const parsed: number = rawPort === undefined ? Number.NaN : Number(rawPort);
@@ -69,8 +72,8 @@ function readEnv(key: string): string | undefined {
 }
 
 function parseAiProvider(rawProvider: string | undefined): AiProviderName {
-  if (rawProvider === "openai") {
-    return "openai";
+  if (rawProvider === "openai" || rawProvider === "openai-compatible") {
+    return rawProvider === "openai-compatible" ? "openai-compatible" : "openai";
   }
   if (rawProvider === "anthropic") {
     return "anthropic";
@@ -78,7 +81,7 @@ function parseAiProvider(rawProvider: string | undefined): AiProviderName {
   if (rawProvider === "google") {
     return "google";
   }
-  if (rawProvider === "local") {
+  if (rawProvider === "local" || rawProvider === "ollama") {
     return "local";
   }
   return defaultAiProvider;
@@ -102,9 +105,12 @@ function buildRuntimeConfig(
   };
   providers.push(mockProvider);
 
-  const openaiBaseUrl: string = readEnv("MIRO_AI_OPENAI_BASE_URL") ?? (provider === "openai" ? baseUrl : defaultAiBaseUrl);
+  const openaiBaseUrl: string =
+    readEnv("MIRO_AI_OPENAI_BASE_URL") ??
+    (provider === "openai" || provider === "openai-compatible" ? baseUrl : defaultAiBaseUrl);
   const openaiApiKey: string | null =
-    readEnv("MIRO_AI_OPENAI_API_KEY") ?? (provider === "openai" ? apiKey : null);
+    readEnv("MIRO_AI_OPENAI_API_KEY") ??
+    (provider === "openai" || provider === "openai-compatible" ? apiKey : null);
   const openaiFast: string =
     readEnv("MIRO_AI_OPENAI_MODEL_FAST") ?? (provider === "openai" ? models.fast : "gpt-4o-mini");
   const openaiBalanced: string =
@@ -145,13 +151,23 @@ function buildRuntimeConfig(
   ];
   const openaiProvider: AiRuntimeProvider = {
     id: "openai",
-    label: "OpenAI",
+    label: "OpenAI compatible",
     baseUrl: openaiBaseUrl,
     models: openaiModels,
     ready: openaiApiKey !== null,
     supportsByok: true,
   };
   providers.push(openaiProvider);
+
+  const openaiCompatibleProvider: AiRuntimeProvider = {
+    id: "openai-compatible",
+    label: "OpenAI compatible",
+    baseUrl: openaiBaseUrl,
+    models: openaiModels,
+    ready: openaiApiKey !== null,
+    supportsByok: true,
+  };
+  providers.push(openaiCompatibleProvider);
 
   const anthropicBaseUrl: string =
     readEnv("MIRO_AI_ANTHROPIC_BASE_URL") ?? "https://api.anthropic.com/v1";
@@ -228,14 +244,18 @@ function buildRuntimeConfig(
   };
   providers.push(googleProvider);
 
-  const localBaseUrl: string = readEnv("MIRO_AI_LOCAL_BASE_URL") ?? "http://localhost:8000/v1";
-  const localTextModel: string = readEnv("MIRO_AI_LOCAL_MODEL_TEXT") ?? "local-llama-3";
+  const localBaseUrl: string =
+    readEnv("MIRO_AI_LOCAL_BASE_URL") ??
+    (provider === "local" ? baseUrl : defaultOllamaBaseUrl);
+  const localTextModel: string =
+    readEnv("MIRO_AI_LOCAL_MODEL_TEXT") ??
+    (provider === "local" ? models.balanced : "llama3.2");
   const localImageModel: string = readEnv("MIRO_AI_LOCAL_MODEL_IMAGE") ?? "local-sdxl";
   const localModels: AiRuntimeModel[] = [
     {
       id: localTextModel,
       kind: "text",
-      label: "Local text model",
+      label: "Ollama / local text",
       tags: ["text", "local"],
     },
     {
@@ -247,7 +267,7 @@ function buildRuntimeConfig(
   ];
   const localProvider: AiRuntimeProvider = {
     id: "local",
-    label: "Local",
+    label: "Local (Ollama)",
     baseUrl: localBaseUrl,
     models: localModels,
     ready: true,
@@ -266,13 +286,17 @@ function getAiConfig(): AiConfig {
   const providerEnv: string | undefined = readEnv("MIRO_AI_PROVIDER");
   const provider: AiProviderName = parseAiProvider(providerEnv);
   const baseUrlEnv: string | undefined = readEnv("MIRO_AI_BASE_URL");
-  const baseUrl: string = baseUrlEnv ?? defaultAiBaseUrl;
+  const baseUrl: string =
+    baseUrlEnv ??
+    (provider === "local" ? defaultOllamaBaseUrl : defaultAiBaseUrl);
   const apiKeyEnv: string | undefined = readEnv("MIRO_AI_API_KEY");
   const apiKey: string | null = apiKeyEnv ?? null;
   const models: AiModelsConfig = {
-    fast: readEnv("MIRO_AI_MODEL_FAST") ?? "gpt-4o-mini",
-    balanced: readEnv("MIRO_AI_MODEL_BALANCED") ?? "gpt-4o",
-    creative: readEnv("MIRO_AI_MODEL_CREATIVE") ?? "gpt-4.1-mini",
+    fast: readEnv("MIRO_AI_MODEL_FAST") ?? (provider === "local" ? "llama3.2" : "gpt-4o-mini"),
+    balanced:
+      readEnv("MIRO_AI_MODEL_BALANCED") ?? (provider === "local" ? "llama3.2" : "gpt-4o"),
+    creative:
+      readEnv("MIRO_AI_MODEL_CREATIVE") ?? (provider === "local" ? "llama3.2" : "gpt-4.1-mini"),
   };
   const runtime: AiRuntimeConfig = buildRuntimeConfig(provider, baseUrl, apiKey, models);
   const config: AiConfig = { provider, baseUrl, apiKey, models, runtime };
@@ -280,16 +304,31 @@ function getAiConfig(): AiConfig {
 }
 
 function validateAiConfig(ai: AiConfig): void {
-  if ((ai.provider === "openai" || ai.provider === "local") && ai.apiKey === null) {
-    throw new Error("MIRO_AI_API_KEY is required when MIRO_AI_PROVIDER is 'openai' or 'local'.");
+  if (
+    (ai.provider === "openai" || ai.provider === "openai-compatible") &&
+    ai.apiKey === null
+  ) {
+    throw new Error(
+      "MIRO_AI_API_KEY is required when MIRO_AI_PROVIDER is 'openai' or 'openai-compatible'.",
+    );
   }
+  // local / Ollama: key optional (dummy key used client-side if needed)
+}
+
+function parseEnableAuth(raw: string | undefined): boolean {
+  if (raw === undefined) {
+    return false;
+  }
+  const normalized: string = raw.trim().toLowerCase();
+  return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
 }
 
 export function getApiConfig(): ApiConfig {
   const port: number = parsePort(process.env.PORT);
   const authBaseRaw: string | undefined = process.env.AUTH_BASE_URL;
   const authBaseUrl: string = authBaseRaw && authBaseRaw.trim().length > 0 ? authBaseRaw : "http://localhost:8787";
+  const enableAuth: boolean = parseEnableAuth(readEnv("MIRO_ENABLE_AUTH"));
   const ai: AiConfig = getAiConfig();
   validateAiConfig(ai);
-  return { port, authBaseUrl, ai };
+  return { port, authBaseUrl, enableAuth, ai };
 }

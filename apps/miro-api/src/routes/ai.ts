@@ -1,634 +1,306 @@
-import type {
-  AiClient,
-  AiCompletionParams,
-  AiCompletionResult,
-  ChatCompletionInput,
-  ChatCompletionResponse,
-  ChatMessage,
-  OpenAiClientConfig,
-  AiImageClient,
-  AiImageParams,
-  AiImageResult,
-} from "@miro/ai";
+import { streamText } from "ai";
+import type { AiImageClient } from "@miro/ai";
 import {
-  createMockAiClient,
+  createAiImageClient,
   createMockAiImageClient,
-  createOpenAiAiClient,
-  createOpenAiImageClient,
+  createModel,
+  listModels,
+  normalizeProviderId,
+  type ModelConfig,
 } from "@miro/ai";
-import type { ApiConfig, AiConfig } from "../config";
-import { isAiRateLimited, resolveModelId, truncateMessagesForV2 } from "../ai-helpers";
+
+import type { ApiConfig, AiConfig, AiRuntimeProvider } from "../config";
+import { buildModelCacheKey, getCachedModels, setCachedModels } from "../model-cache";
 import type { AppContext, AppInstance } from "../types";
 
-const DEFAULT_IMAGE_MODEL: string = process.env.MIRO_AI_IMAGE_MODEL?.trim() ?? "gpt-image-1";
+interface UIMessage {
+  role: "user" | "assistant" | "system";
+  content?: string;
+  parts?: Array<{ type: "text"; text: string } | { type: "image"; image: string }>;
+}
 
-interface AiCompleteRequestBody {
-  readonly prompt: string;
+interface CoreMessage {
+  role: "system" | "user" | "assistant" | "tool";
+  content: string | Array<unknown>;
+}
+
+interface ChatRequestBody {
+  readonly messages: UIMessage[];
   readonly model?: string;
-}
-
-interface AiCompleteResponseBody {
-  readonly text: string;
-}
-
-function isAiCompleteRequestBody(value: unknown): value is AiCompleteRequestBody {
-  if (value === null || typeof value !== "object") {
-    return false;
-  }
-  const record: Record<string, unknown> = value as Record<string, unknown>;
-  if (typeof record.prompt !== "string") {
-    return false;
-  }
-  if ("model" in record && typeof record.model !== "string") {
-    return false;
-  }
-  return true;
-}
-
-interface AiChatRequestBody {
-  readonly messages: readonly ChatMessage[];
-  readonly model?: string;
-}
-
-interface AiChatResponseBody {
-  readonly completion: ChatCompletionResponse;
-}
-
-function isAiChatRequestBody(value: unknown): value is AiChatRequestBody {
-  if (value === null || typeof value !== "object") {
-    return false;
-  }
-  const record: Record<string, unknown> = value as Record<string, unknown>;
-  if (!Array.isArray(record.messages)) {
-    return false;
-  }
-  for (const item of record.messages) {
-    if (item === null || typeof item !== "object") {
-      return false;
-    }
-    const messageRecord: Record<string, unknown> = item as Record<string, unknown>;
-    if (typeof messageRecord.role !== "string") {
-      return false;
-    }
-  }
-  if ("model" in record && typeof record.model !== "string") {
-    return false;
-  }
-  return true;
-}
-
-interface AiCompleteV2RequestBody {
-  readonly prompt: string;
-  readonly model?: string;
+  readonly provider?: string;
   readonly byokKey?: string;
+  readonly baseUrl?: string;
+  readonly systemPrompt?: string;
 }
 
-function isAiCompleteV2RequestBody(value: unknown): value is AiCompleteV2RequestBody {
-  if (value === null || typeof value !== "object") {
-    return false;
-  }
-  const record: Record<string, unknown> = value as Record<string, unknown>;
-  if (typeof record.prompt !== "string") {
-    return false;
-  }
-  if ("model" in record && typeof record.model !== "string") {
-    return false;
-  }
-  if ("byokKey" in record && typeof record.byokKey !== "string") {
-    return false;
-  }
-  return true;
-}
-
-interface AiChatV2RequestBody {
-  readonly messages: readonly ChatMessage[];
+interface ImageRequestBody {
+  readonly prompt?: string;
   readonly model?: string;
-  readonly temperature?: number;
-  readonly maxTokens?: number;
+  readonly provider?: string;
   readonly byokKey?: string;
-}
-
-function isAiChatV2RequestBody(value: unknown): value is AiChatV2RequestBody {
-  if (value === null || typeof value !== "object") {
-    return false;
-  }
-  const record: Record<string, unknown> = value as Record<string, unknown>;
-  if (!Array.isArray(record.messages)) {
-    return false;
-  }
-  for (const item of record.messages) {
-    if (item === null || typeof item !== "object") {
-      return false;
-    }
-    const messageRecord: Record<string, unknown> = item as Record<string, unknown>;
-    if (typeof messageRecord.role !== "string") {
-      return false;
-    }
-  }
-  if ("model" in record && typeof record.model !== "string") {
-    return false;
-  }
-  if ("temperature" in record && typeof record.temperature !== "number") {
-    return false;
-  }
-  if ("maxTokens" in record && typeof record.maxTokens !== "number") {
-    return false;
-  }
-  if ("byokKey" in record && typeof record.byokKey !== "string") {
-    return false;
-  }
-  return true;
-}
-
-interface AiImageV2RequestBody {
-  readonly prompt: string;
-  readonly model?: string;
+  readonly baseUrl?: string;
   readonly size?: string;
-  readonly count?: number;
+}
+
+interface ModelsRequestBody {
+  readonly provider?: string;
   readonly byokKey?: string;
+  readonly baseUrl?: string;
 }
 
-function isAiImageV2RequestBody(value: unknown): value is AiImageV2RequestBody {
-  if (value === null || typeof value !== "object") {
-    return false;
+function toImagePart(image: string): { type: "image"; image: URL | string } {
+  if (image.startsWith("data:")) {
+    return { type: "image", image };
   }
-  const record: Record<string, unknown> = value as Record<string, unknown>;
-  if (typeof record.prompt !== "string") {
-    return false;
-  }
-  if ("model" in record && typeof record.model !== "string") {
-    return false;
-  }
-  if ("size" in record && typeof record.size !== "string") {
-    return false;
-  }
-  if ("count" in record && typeof record.count !== "number") {
-    return false;
-  }
-  if ("byokKey" in record && typeof record.byokKey !== "string") {
-    return false;
-  }
-  return true;
+  return { type: "image", image: new URL(image) };
 }
 
-interface AiImageV2ResponseBody {
-  readonly images: readonly AiImageResult[];
-}
-
-type AiAssistantMode = "auto" | "text" | "image" | "both";
-
-interface AiAssistantV2RequestBody {
-  readonly messages: readonly ChatMessage[];
-  readonly mode?: AiAssistantMode;
-  readonly textModel?: string;
-  readonly imageModel?: string;
-  readonly imageSize?: string;
-  readonly imageCount?: number;
-  readonly webSearchEnabled?: boolean;
-  readonly byokKey?: string;
-}
-
-interface AiAssistantV2ResponseBody {
-  readonly completion?: ChatCompletionResponse;
-  readonly images?: readonly AiImageResult[];
-}
-
-function isAiAssistantV2RequestBody(value: unknown): value is AiAssistantV2RequestBody {
-  if (value === null || typeof value !== "object") {
-    return false;
-  }
-  const record: Record<string, unknown> = value as Record<string, unknown>;
-  if (!Array.isArray(record.messages)) {
-    return false;
-  }
-  for (const item of record.messages) {
-    if (item === null || typeof item !== "object") {
-      return false;
+function convertToCoreMessages(messages: UIMessage[]): CoreMessage[] {
+  return messages.map((m) => {
+    if (m.parts) {
+      return {
+        role: m.role,
+        content: m.parts.map((p) =>
+          p.type === "text" ? { type: "text", text: p.text } : toImagePart(p.image),
+        ),
+      };
     }
-    const messageRecord: Record<string, unknown> = item as Record<string, unknown>;
-    if (typeof messageRecord.role !== "string") {
-      return false;
-    }
+    return { role: m.role, content: m.content ?? "" };
+  });
+}
+
+function findRuntimeProvider(
+  ai: AiConfig,
+  providerId: string,
+): AiRuntimeProvider | undefined {
+  return ai.runtime.providers.find((provider) => provider.id === providerId);
+}
+
+function findProviderEnvKey(providerId: string): string {
+  if (providerId === "openai" || providerId === "openai-compatible") {
+    return process.env.MIRO_AI_OPENAI_API_KEY?.trim() ?? process.env.MIRO_AI_API_KEY?.trim() ?? "";
   }
-  if ("mode" in record) {
-    const modeValue: unknown = record.mode;
-    if (typeof modeValue !== "string") {
-      return false;
-    }
-    const allowedModes: readonly AiAssistantMode[] = ["auto", "text", "image", "both"];
-    const isAllowed: boolean = allowedModes.includes(modeValue as AiAssistantMode);
-    if (!isAllowed) {
-      return false;
-    }
+  if (providerId === "google") {
+    return process.env.MIRO_AI_GOOGLE_API_KEY?.trim() ?? process.env.MIRO_AI_API_KEY?.trim() ?? "";
   }
-  if ("textModel" in record && typeof record.textModel !== "string") {
-    return false;
+  if (providerId === "anthropic") {
+    return process.env.MIRO_AI_ANTHROPIC_API_KEY?.trim() ?? process.env.MIRO_AI_API_KEY?.trim() ?? "";
   }
-  if ("imageModel" in record && typeof record.imageModel !== "string") {
-    return false;
+  return "";
+}
+
+function resolveProviderCredentials(
+  apiConfig: ApiConfig,
+  body: { readonly provider?: string; readonly byokKey?: string; readonly baseUrl?: string },
+): { readonly provider: string; readonly apiKey: string; readonly baseUrl?: string } {
+  const requestedProvider = body.provider
+    ? normalizeProviderId(body.provider)
+    : normalizeProviderId(apiConfig.ai.provider);
+  const runtimeProvider = findRuntimeProvider(apiConfig.ai, requestedProvider);
+  const byokKey = body.byokKey?.trim() ?? "";
+  const envKey = apiConfig.ai.apiKey ?? "";
+  const apiKey =
+    byokKey.length > 0
+      ? byokKey
+      : requestedProvider === apiConfig.ai.provider
+        ? envKey
+        : findProviderEnvKey(requestedProvider) || envKey;
+
+  const baseUrl =
+    body.baseUrl?.trim() ||
+    runtimeProvider?.baseUrl ||
+    (requestedProvider === apiConfig.ai.provider ? apiConfig.ai.baseUrl : undefined);
+
+  return { provider: requestedProvider, apiKey, baseUrl };
+}
+
+function resolveModelConfig(apiConfig: ApiConfig, body: ChatRequestBody): ModelConfig {
+  const credentials = resolveProviderCredentials(apiConfig, body);
+  const runtimeProvider = findRuntimeProvider(apiConfig.ai, credentials.provider);
+
+  const modelId =
+    body.model?.trim() ||
+    apiConfig.ai.models.balanced ||
+    runtimeProvider?.models.find((model) => model.kind === "text")?.id ||
+    "gpt-4o-mini";
+
+  return {
+    provider: credentials.provider,
+    apiKey: credentials.apiKey,
+    modelId,
+    baseUrl: credentials.baseUrl,
+  };
+}
+
+function resolveImageModelId(apiConfig: ApiConfig, body: ImageRequestBody, providerId: string): string {
+  if (body.model?.trim()) {
+    return body.model.trim();
   }
-  if ("imageSize" in record && typeof record.imageSize !== "string") {
-    return false;
+  const runtimeProvider = findRuntimeProvider(apiConfig.ai, providerId);
+  const fromRuntime = runtimeProvider?.models.find((model) => model.kind === "image")?.id;
+  if (fromRuntime) {
+    return fromRuntime;
   }
-  if ("imageCount" in record && typeof record.imageCount !== "number") {
-    return false;
+  if (providerId === "google") {
+    return process.env.MIRO_AI_GOOGLE_MODEL_IMAGE?.trim() || "imagen-3.0-generate-002";
   }
-  if ("webSearchEnabled" in record && typeof record.webSearchEnabled !== "boolean") {
-    return false;
-  }
-  if ("byokKey" in record && typeof record.byokKey !== "string") {
-    return false;
-  }
-  return true;
+  return (
+    process.env.MIRO_AI_OPENAI_IMAGE_MODEL?.trim() ||
+    process.env.MIRO_AI_IMAGE_MODEL?.trim() ||
+    "dall-e-3"
+  );
 }
 
 export interface AiRouteDeps {
   readonly app: AppInstance;
   readonly apiConfig: ApiConfig;
-  readonly aiClient: AiClient;
   readonly imageClient: AiImageClient;
 }
 
-export function createAiClientFromConfig(config: ApiConfig): AiClient {
-  const providerName = config.ai.provider;
-  const apiKey: string | null = config.ai.apiKey;
-  if (providerName === "openai" || providerName === "local") {
-    const openAiConfig: OpenAiClientConfig = {
-      baseUrl: config.ai.baseUrl,
-      apiKey: apiKey as string,
-    };
-    return createOpenAiAiClient(openAiConfig);
-  }
-  return createMockAiClient();
-}
-
 export function createImageClientFromConfig(config: ApiConfig): AiImageClient {
-  const apiKey: string | null = config.ai.apiKey;
-  if (apiKey) {
-    const openAiConfig: OpenAiClientConfig = {
+  try {
+    return createAiImageClient({
+      provider: config.ai.provider,
+      apiKey: config.ai.apiKey ?? "",
       baseUrl: config.ai.baseUrl,
-      apiKey,
-    };
-    return createOpenAiImageClient(openAiConfig);
-  }
-  return createMockAiImageClient();
-}
-
-type AppliedAiAssistantMode = "text" | "image" | "both";
-
-function getLastUserContent(messages: readonly ChatMessage[]): string {
-  const reversed: readonly ChatMessage[] = [...messages].reverse();
-  const lastUser: ChatMessage | undefined = reversed.find(
-    (message: ChatMessage): boolean => message.role === "user",
-  );
-  const content: unknown = lastUser?.content;
-  if (typeof content !== "string") {
-    return "";
-  }
-  return content;
-}
-
-function getAppliedAssistantMode(
-  messages: readonly ChatMessage[],
-  mode: AiAssistantMode | undefined,
-): AppliedAiAssistantMode {
-  if (mode && mode !== "auto") {
-    if (mode === "text" || mode === "image" || mode === "both") {
-      return mode;
-    }
-  }
-  const latestUser: string = getLastUserContent(messages).toLowerCase();
-  if (!latestUser) {
-    return "text";
-  }
-  const imageKeywords: readonly string[] = [
-    "image",
-    "picture",
-    "photo",
-    "logo",
-    "icon",
-    "wallpaper",
-    "illustration",
-    "render",
-    "drawing",
-    "sketch",
-    "art",
-  ];
-  const textKeywords: readonly string[] = [
-    "explain",
-    "write",
-    "draft",
-    "summarize",
-    "outline",
-    "describe",
-  ];
-  const hasImageKeyword: boolean = imageKeywords.some((keyword: string): boolean =>
-    latestUser.includes(keyword),
-  );
-  const hasTextKeyword: boolean = textKeywords.some((keyword: string): boolean =>
-    latestUser.includes(keyword),
-  );
-  if (hasImageKeyword && hasTextKeyword) {
-    return "both";
-  }
-  if (hasImageKeyword) {
-    return "image";
-  }
-  return "text";
-}
-
-interface GetAiClientForRequestInput {
-  readonly apiConfig: ApiConfig;
-  readonly baseClient: AiClient;
-  readonly byokKey?: string;
-}
-
-function getAiClientForRequest(input: GetAiClientForRequestInput): AiClient {
-  const trimmed: string = input.byokKey?.trim() ?? "";
-  if (trimmed.length === 0) {
-    return input.baseClient;
-  }
-  const providerName: string = input.apiConfig.ai.provider;
-  if (providerName === "openai" || providerName === "local") {
-    const openAiConfig: OpenAiClientConfig = {
-      baseUrl: input.apiConfig.ai.baseUrl,
-      apiKey: trimmed,
-    };
-    const client: AiClient = createOpenAiAiClient(openAiConfig);
-    return client;
-  }
-  return input.baseClient;
-}
-
-interface GetImageClientForRequestInput {
-  readonly apiConfig: ApiConfig;
-  readonly baseClient: AiImageClient;
-  readonly byokKey?: string;
-}
-
-function getImageClientForRequest(input: GetImageClientForRequestInput): AiImageClient {
-  const trimmed: string = input.byokKey?.trim() ?? "";
-  if (trimmed.length === 0) {
-    return input.baseClient;
-  }
-  const providerName: string = input.apiConfig.ai.provider;
-  if (providerName === "openai" || providerName === "local") {
-    const openAiConfig: OpenAiClientConfig = {
-      baseUrl: input.apiConfig.ai.baseUrl,
-      apiKey: trimmed,
-    };
-    const client: AiImageClient = createOpenAiImageClient(openAiConfig);
-    return client;
-  }
-  return input.baseClient;
-}
-
-async function handleAiComplete(context: AppContext, client: AiClient): Promise<Response> {
-  const rawBody: unknown = await context.req.json();
-  if (!isAiCompleteRequestBody(rawBody)) {
-    return context.json({ error: "Invalid request body" } as const, 400);
-  }
-  const requestBody: AiCompleteRequestBody = rawBody;
-  const params: AiCompletionParams = {
-    model: requestBody.model ?? "mock-model",
-    prompt: requestBody.prompt,
-  };
-  const result: AiCompletionResult = await client.generateCompletion(params);
-  const responseBody: AiCompleteResponseBody = { text: result.text };
-  return context.json(responseBody);
-}
-
-async function handleAiChat(context: AppContext, client: AiClient): Promise<Response> {
-  const rawBody: unknown = await context.req.json();
-  if (!isAiChatRequestBody(rawBody)) {
-    return context.json({ error: "Invalid request body" } as const, 400);
-  }
-  const requestBody: AiChatRequestBody = rawBody;
-  const input: ChatCompletionInput = {
-    model: requestBody.model ?? "mock-model",
-    messages: requestBody.messages,
-  };
-  const completion: ChatCompletionResponse = await client.provider.createChatCompletion(input);
-  const responseBody: AiChatResponseBody = { completion };
-  return context.json(responseBody);
-}
-
-async function handleAiCompleteV2(
-  context: AppContext,
-  apiConfig: ApiConfig,
-  baseClient: AiClient,
-): Promise<Response> {
-  if (isAiRateLimited(context)) {
-    return context.json({ error: "Rate limit exceeded" } as const, 429);
-  }
-  let rawBody: unknown;
-  try {
-    rawBody = await context.req.json();
-  } catch {
-    return context.json({ error: "Invalid JSON body" } as const, 400);
-  }
-  if (!isAiCompleteV2RequestBody(rawBody)) {
-    return context.json({ error: "Invalid request body" } as const, 400);
-  }
-  const requestBody: AiCompleteV2RequestBody = rawBody;
-  const model: string = resolveModelId(requestBody.model, apiConfig.ai.models);
-  const params: AiCompletionParams = {
-    model,
-    prompt: requestBody.prompt,
-  };
-  try {
-    const client: AiClient = getAiClientForRequest({ apiConfig, baseClient, byokKey: requestBody.byokKey });
-    const result: AiCompletionResult = await client.generateCompletion(params);
-    const responseBody: AiCompleteResponseBody = { text: result.text };
-    return context.json(responseBody);
-  } catch {
-    return context.json({ error: "AI provider error" } as const, 502);
-  }
-}
-
-async function handleAiImageV2(
-  context: AppContext,
-  apiConfig: ApiConfig,
-  baseClient: AiImageClient,
-): Promise<Response> {
-  if (isAiRateLimited(context)) {
-    return context.json({ error: "Rate limit exceeded" } as const, 429);
-  }
-  let rawBody: unknown;
-  try {
-    rawBody = await context.req.json();
-  } catch {
-    return context.json({ error: "Invalid JSON body" } as const, 400);
-  }
-  if (!isAiImageV2RequestBody(rawBody)) {
-    return context.json({ error: "Invalid request body" } as const, 400);
-  }
-  const requestBody: AiImageV2RequestBody = rawBody;
-  const trimmedModel: string = requestBody.model?.trim() ?? "";
-  const model: string = trimmedModel.length > 0 ? trimmedModel : DEFAULT_IMAGE_MODEL;
-  const size: string | undefined = requestBody.size;
-  const countRaw: number = requestBody.count ?? 1;
-  const count: number = countRaw > 0 && countRaw <= 8 ? countRaw : 1;
-  const params: AiImageParams = {
-    model,
-    prompt: requestBody.prompt,
-    size,
-    count,
-  };
-  try {
-    const client: AiImageClient = getImageClientForRequest({
-      apiConfig,
-      baseClient,
-      byokKey: requestBody.byokKey,
     });
-    const images: readonly AiImageResult[] = await client.generateImages(params);
-    const responseBody: AiImageV2ResponseBody = { images };
-    return context.json(responseBody);
   } catch {
-    return context.json({ error: "AI provider error" } as const, 502);
+    return createMockAiImageClient();
   }
 }
 
-async function handleAiChatV2(
-  context: AppContext,
-  apiConfig: ApiConfig,
-  baseClient: AiClient,
-): Promise<Response> {
-  if (isAiRateLimited(context)) {
-    return context.json({ error: "Rate limit exceeded" } as const, 429);
-  }
-  let rawBody: unknown;
+async function handleChat(context: AppContext, apiConfig: ApiConfig): Promise<Response> {
+  let body: ChatRequestBody;
   try {
-    rawBody = await context.req.json();
+    body = (await context.req.json()) as ChatRequestBody;
   } catch {
-    return context.json({ error: "Invalid JSON body" } as const, 400);
+    return context.json({ error: "Invalid JSON body" }, 400);
   }
-  if (!isAiChatV2RequestBody(rawBody)) {
-    return context.json({ error: "Invalid request body" } as const, 400);
-  }
-  const requestBody: AiChatV2RequestBody = rawBody;
-  const trimmedMessages: readonly ChatMessage[] = truncateMessagesForV2(requestBody.messages);
-  const input: ChatCompletionInput = {
-    model: resolveModelId(requestBody.model, apiConfig.ai.models),
-    messages: trimmedMessages,
-    temperature: requestBody.temperature,
-    maxTokens: requestBody.maxTokens,
-  };
-  try {
-    const client: AiClient = getAiClientForRequest({ apiConfig, baseClient, byokKey: requestBody.byokKey });
-    const completion: ChatCompletionResponse = await client.provider.createChatCompletion(input);
-    const responseBody: AiChatResponseBody = { completion };
-    return context.json(responseBody);
-  } catch {
-    return context.json({ error: "AI provider error" } as const, 502);
-  }
-}
 
-async function handleAiAssistantV2(
-  context: AppContext,
-  apiConfig: ApiConfig,
-  baseClient: AiClient,
-  baseImageClient: AiImageClient,
-): Promise<Response> {
-  if (isAiRateLimited(context)) {
-    return context.json({ error: "Rate limit exceeded" } as const, 429);
+  if (!Array.isArray(body.messages)) {
+    return context.json({ error: "messages must be an array" }, 400);
   }
-  let rawBody: unknown;
+
+  const config = resolveModelConfig(apiConfig, body);
+  const systemPrompt = body.systemPrompt?.trim();
+
   try {
-    rawBody = await context.req.json();
-  } catch {
-    return context.json({ error: "Invalid JSON body" } as const, 400);
-  }
-  if (!isAiAssistantV2RequestBody(rawBody)) {
-    return context.json({ error: "Invalid request body" } as const, 400);
-  }
-  const requestBody: AiAssistantV2RequestBody = rawBody;
-  const trimmedMessages: readonly ChatMessage[] = truncateMessagesForV2(requestBody.messages);
-  const mode: AppliedAiAssistantMode = getAppliedAssistantMode(trimmedMessages, requestBody.mode);
-  const textModel: string = resolveModelId(requestBody.textModel, apiConfig.ai.models);
-  const imageModelRaw: string = requestBody.imageModel?.trim() ?? "";
-  const imageModel: string = imageModelRaw.length > 0 ? imageModelRaw : DEFAULT_IMAGE_MODEL;
-  const size: string | undefined = requestBody.imageSize;
-  const countRaw: number = requestBody.imageCount ?? 1;
-  const count: number = countRaw > 0 && countRaw <= 8 ? countRaw : 1;
-  const byokKey: string | undefined = requestBody.byokKey;
-  const webSearchEnabled: boolean = requestBody.webSearchEnabled === true;
-  const metadata: Readonly<Record<string, unknown>> | undefined = webSearchEnabled
-    ? { webSearchEnabled: true }
-    : undefined;
-  const chatInput: ChatCompletionInput = {
-    model: textModel,
-    messages: trimmedMessages,
-    metadata,
-  };
-  const imageParams: AiImageParams = {
-    model: imageModel,
-    prompt: getLastUserContent(trimmedMessages),
-    size,
-    count,
-  };
-  try {
-    const client: AiClient = getAiClientForRequest({ apiConfig, baseClient, byokKey });
-    const imageClient: AiImageClient = getImageClientForRequest({
-      apiConfig,
-      baseClient: baseImageClient,
-      byokKey,
+    const model = createModel(config);
+    const coreMessages = convertToCoreMessages(body.messages);
+
+    const result = await streamText({
+      model,
+      messages: coreMessages as never,
+      ...(systemPrompt ? { system: systemPrompt } : {}),
     });
-    let completion: ChatCompletionResponse | undefined;
-    let images: readonly AiImageResult[] | undefined;
-    if (mode === "text") {
-      const chatCompletion: ChatCompletionResponse =
-        await client.provider.createChatCompletion(chatInput);
-      completion = chatCompletion;
-    } else if (mode === "image") {
-      const generated: readonly AiImageResult[] = await imageClient.generateImages(imageParams);
-      images = generated;
-    } else {
-      const [chatCompletion, generatedImages]: [
-        ChatCompletionResponse,
-        readonly AiImageResult[],
-      ] = await Promise.all([
-        client.provider.createChatCompletion(chatInput),
-        imageClient.generateImages(imageParams),
-      ]);
-      completion = chatCompletion;
-      images = generatedImages;
-    }
-    const responseBody: AiAssistantV2ResponseBody = {
-      ...(completion ? { completion } : {}),
-      ...(images && images.length > 0 ? { images } : {}),
-    };
-    return context.json(responseBody);
+
+    return result.toUIMessageStreamResponse();
+  } catch (error) {
+    console.error("Chat error:", error);
+    const message = error instanceof Error ? error.message : "Failed to generate response";
+    return context.json({ error: message }, 500);
+  }
+}
+
+async function handleImage(context: AppContext, apiConfig: ApiConfig): Promise<Response> {
+  let body: ImageRequestBody;
+  try {
+    body = (await context.req.json()) as ImageRequestBody;
   } catch {
-    return context.json({ error: "AI provider error" } as const, 502);
+    return context.json({ error: "Invalid JSON body" }, 400);
+  }
+
+  const prompt = body.prompt?.trim();
+  if (!prompt) {
+    return context.json({ error: "prompt is required" }, 400);
+  }
+
+  try {
+    const credentials = resolveProviderCredentials(apiConfig, body);
+    const model = resolveImageModelId(apiConfig, body, credentials.provider);
+    const imageClient = createAiImageClient({
+      provider: credentials.provider,
+      apiKey: credentials.apiKey,
+      baseUrl: credentials.baseUrl,
+    });
+    const images = await imageClient.generateImages({
+      prompt,
+      model,
+      size: body.size,
+    });
+    return context.json({ images });
+  } catch (error) {
+    console.error("Image error:", error);
+    const message = error instanceof Error ? error.message : "Failed to generate image";
+    return context.json({ error: message }, 500);
+  }
+}
+
+async function handleModels(context: AppContext, apiConfig: ApiConfig): Promise<Response> {
+  let body: ModelsRequestBody;
+  try {
+    body = (await context.req.json()) as ModelsRequestBody;
+  } catch {
+    return context.json({ error: "Invalid JSON body" }, 400);
+  }
+
+  const credentials = resolveProviderCredentials(apiConfig, body);
+  const cacheKey = buildModelCacheKey(
+    credentials.provider,
+    credentials.baseUrl,
+    credentials.apiKey,
+  );
+  const cached = getCachedModels(cacheKey);
+  if (cached) {
+    return context.json({
+      provider: credentials.provider,
+      models: cached,
+      cached: true,
+    });
+  }
+
+  try {
+    const models = await listModels({
+      provider: credentials.provider,
+      apiKey: credentials.apiKey,
+      baseUrl: credentials.baseUrl,
+    });
+    setCachedModels(cacheKey, models);
+    return context.json({
+      provider: credentials.provider,
+      models,
+      cached: false,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to list models";
+    return context.json({
+      provider: credentials.provider,
+      models: [],
+      cached: false,
+      error: message,
+    });
   }
 }
 
 export function registerAiRoutes(deps: AiRouteDeps): void {
-  const { app, apiConfig, aiClient, imageClient } = deps;
+  const { app, apiConfig } = deps;
 
   app.get("/ai/config", (context: AppContext) => {
     const ai: AiConfig = apiConfig.ai;
-    const ready: boolean = ai.provider === "mock" || ai.apiKey !== null;
-    return context.json(
-      {
-        provider: ai.provider,
-        baseUrl: ai.baseUrl,
-        models: ai.models,
-        ready,
-        runtime: ai.runtime,
-      } as const,
-    );
+    return context.json({
+      provider: ai.provider,
+      models: ai.models,
+      ready: ai.apiKey !== null || ai.provider === "mock" || ai.provider === "local",
+      runtime: ai.runtime,
+      image: {
+        path: "api",
+        providers: ["mock", "openai", "openai-compatible", "google"],
+        deferred: ["comfyui"],
+      },
+    });
   });
 
-  app.post("/ai/complete", async (context: AppContext) => handleAiComplete(context, aiClient));
-
-  app.post("/ai/chat", async (context: AppContext) => handleAiChat(context, aiClient));
-
-  app.post("/v2/ai/complete", async (context: AppContext) => handleAiCompleteV2(context, apiConfig, aiClient));
-  app.post("/v2/ai/chat", async (context: AppContext) => handleAiChatV2(context, apiConfig, aiClient));
-  app.post("/v2/ai/assistant", async (context: AppContext) =>
-    handleAiAssistantV2(context, apiConfig, aiClient, imageClient),
-  );
-  app.post("/v2/ai/image", async (context: AppContext) => handleAiImageV2(context, apiConfig, imageClient));
+  app.post("/api/chat", async (context: AppContext) => handleChat(context, apiConfig));
+  app.post("/ai/models", async (context: AppContext) => handleModels(context, apiConfig));
+  app.post("/v2/ai/image", async (context: AppContext) => handleImage(context, apiConfig));
 }

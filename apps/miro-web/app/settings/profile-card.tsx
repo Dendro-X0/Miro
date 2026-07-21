@@ -1,7 +1,7 @@
 "use client";
 
 import type { ChangeEvent, ReactElement } from "react";
-import type { SettingsState, SettingsUpdateInput } from "../_settings-store";
+import type { SettingsState, SettingsUpdateInput } from "@miro/core";
 
 interface ProfileCardProps {
   readonly profile: SettingsState["profile"];

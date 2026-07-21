@@ -1,7 +1,7 @@
 "use client";
 
-import type { ReactElement } from "react";
-import { Globe2, Image as ImageIcon, MessageSquareText, Sparkles } from "lucide-react";
+import type { ChangeEvent, ReactElement } from "react";
+import { MessageSquareText } from "lucide-react";
 import UiKickerLabel from "../../../../ui/kicker-label";
 import PillButton from "../../../../ui/pill-button";
 import type { AssistantMode } from "../../../../shell/types";
@@ -14,8 +14,6 @@ interface AssistantModeOption {
 interface AssistantModeRowProps {
   readonly mode: AssistantMode;
   readonly onChangeMode: (mode: AssistantMode) => void;
-  readonly webSearchEnabled: boolean;
-  readonly onToggleWebSearch: () => void;
 }
 
 const assistantModeOptions: readonly AssistantModeOption[] = [
@@ -29,17 +27,11 @@ function getAssistantModeIcon(mode: AssistantMode): ReactElement | null {
   if (mode === "text") {
     return <MessageSquareText className="h-3 w-3" aria-hidden="true" />;
   }
-  if (mode === "image") {
-    return <ImageIcon className="h-3 w-3" aria-hidden="true" />;
-  }
-  if (mode === "both") {
-    return <Sparkles className="h-3 w-3" aria-hidden="true" />;
-  }
-  return <Sparkles className="h-3 w-3" aria-hidden="true" />;
+  return null;
 }
 
 export default function AssistantModeRow(props: AssistantModeRowProps): ReactElement {
-  const { mode, onChangeMode, webSearchEnabled, onToggleWebSearch } = props;
+  const { mode, onChangeMode } = props;
   return (
     <div className="mt-1 text-[11px] text-muted-foreground">
       <div className="flex items-center gap-1.5">
@@ -66,18 +58,6 @@ export default function AssistantModeRow(props: AssistantModeRowProps): ReactEle
               </PillButton>
             );
           })}
-          <PillButton
-            variant="surface"
-            size="xs"
-            active={webSearchEnabled}
-            onClick={onToggleWebSearch}
-            ariaPressed={webSearchEnabled}
-          >
-            <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
-              <Globe2 className="h-3 w-3" aria-hidden="true" />
-              <span>Web search</span>
-            </span>
-          </PillButton>
         </div>
         <div className="pointer-events-none absolute inset-y-0 right-0 w-8 chip-scroll-fade" />
       </div>
