@@ -1,9 +1,10 @@
 # Dependencies
 node_modules
 
-# Next.js build output
+# Next.js / web build output
 .next
 out
+apps/miro-web/out
 
 # Turbo repo cache
 .turbo
@@ -13,6 +14,8 @@ npm-debug.log*
 yarn-debug.log*
 pnpm-debug.log*
 *.log
+build_error.log
+test_error.log
 
 # Environment files
 .env
@@ -24,7 +27,19 @@ dist
 build
 coverage
 *.tsbuildinfo
+
+# Desktop / Rust / Tauri
+apps/miro-desktop/src-tauri/target/
 apps/miro-desktop/src-tauri/resources/miro-api/
+**/*.pdb
+
+# Expo / mobile
+apps/miro-mobile/.expo/
+apps/miro-mobile/expo-env.d.ts
+*.expo-shared
+
+# Lockfile fragments / editor junk
+pnpm-lock.yaml.*
 
 # Editor / OS
 .vscode

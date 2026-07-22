@@ -1,9 +1,0 @@
-e:\Web Projects\miro-workspace\miro\apps\miro-desktop\src-tauri\target\debug\deps\tauri_runtime-fffbb22404d4f5e1.d: C:\Users\Administrator\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tauri-runtime-2.9.1\src\lib.rs C:\Users\Administrator\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tauri-runtime-2.9.1\src\dpi.rs C:\Users\Administrator\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tauri-runtime-2.9.1\src\monitor.rs C:\Users\Administrator\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tauri-runtime-2.9.1\src\webview.rs C:\Users\Administrator\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tauri-runtime-2.9.1\src\window.rs
-
-e:\Web Projects\miro-workspace\miro\apps\miro-desktop\src-tauri\target\debug\deps\libtauri_runtime-fffbb22404d4f5e1.rmeta: C:\Users\Administrator\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tauri-runtime-2.9.1\src\lib.rs C:\Users\Administrator\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tauri-runtime-2.9.1\src\dpi.rs C:\Users\Administrator\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tauri-runtime-2.9.1\src\monitor.rs C:\Users\Administrator\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tauri-runtime-2.9.1\src\webview.rs C:\Users\Administrator\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tauri-runtime-2.9.1\src\window.rs
-
-C:\Users\Administrator\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tauri-runtime-2.9.1\src\lib.rs:
-C:\Users\Administrator\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tauri-runtime-2.9.1\src\dpi.rs:
-C:\Users\Administrator\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tauri-runtime-2.9.1\src\monitor.rs:
-C:\Users\Administrator\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tauri-runtime-2.9.1\src\webview.rs:
-C:\Users\Administrator\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tauri-runtime-2.9.1\src\window.rs:
