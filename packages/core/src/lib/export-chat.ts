@@ -1,4 +1,4 @@
-import { getImageUrlFromMessageContent, getTextFromStoredContent } from "./message-parts";
+import { getImageUrlFromMessageContent, deserializeMessageContent } from "./message-parts";
 
 function formatRole(role: string): string {
   if (role === "user") {
@@ -18,10 +18,14 @@ function escapeMarkdownImage(content: string): string {
   if (generated) {
     return `![Generated image](${generated})`;
   }
-  // Multipart vision messages: show text + note about attached image
   if (content.startsWith("miro:parts:")) {
-    const text = getTextFromStoredContent(content).trim();
-    const hasImage = content.includes('"type":"image"') || content.includes('"type": "image"');
+    const parts = deserializeMessageContent(content);
+    const text = parts
+      .filter((part): part is { type: "text"; text: string } => part.type === "text")
+      .map((part) => part.text)
+      .join("")
+      .trim();
+    const hasImage = parts.some((part) => part.type === "image");
     const lines = [text || "(attachment)"];
     if (hasImage) {
       lines.push("", "*(image attached)*");

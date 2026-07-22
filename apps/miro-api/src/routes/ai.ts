@@ -12,6 +12,11 @@ import {
 import type { ApiConfig, AiConfig, AiRuntimeProvider } from "../config";
 import { buildModelCacheKey, getCachedModels, setCachedModels } from "../model-cache";
 import type { AppContext, AppInstance } from "../types";
+import {
+  isAiRateLimited,
+  truncateMessagesForV2,
+  type RateLimitContext,
+} from "../ai-helpers";
 
 interface UIMessage {
   role: "user" | "assistant" | "system";
@@ -170,6 +175,22 @@ export function createImageClientFromConfig(config: ApiConfig): AiImageClient {
 }
 
 async function handleChat(context: AppContext, apiConfig: ApiConfig): Promise<Response> {
+  const rateLimitContext: RateLimitContext = {
+    req: {
+      header: (name: string) => context.req.header(name) ?? undefined,
+    },
+    get: <T,>(key: string): T | undefined => {
+      try {
+        return context.get(key as never) as T | undefined;
+      } catch {
+        return undefined;
+      }
+    },
+  };
+  if (isAiRateLimited(rateLimitContext)) {
+    return context.json({ error: "Rate limit exceeded. Try again shortly." }, 429);
+  }
+
   let body: ChatRequestBody;
   try {
     body = (await context.req.json()) as ChatRequestBody;
@@ -186,7 +207,7 @@ async function handleChat(context: AppContext, apiConfig: ApiConfig): Promise<Re
 
   try {
     const model = createModel(config);
-    const coreMessages = convertToCoreMessages(body.messages);
+    const coreMessages = truncateMessagesForV2(convertToCoreMessages(body.messages));
 
     const result = await streamText({
       model,

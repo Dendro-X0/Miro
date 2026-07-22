@@ -64,8 +64,9 @@ pub fn vault_save_message(
     session_id: String,
     role: String,
     content: String,
+    message_id: Option<String>,
 ) -> Result<VaultMessageRecord, CommandError> {
-    save_message(&app, session_id, role, content)
+    save_message(&app, session_id, role, content, message_id)
 }
 
 #[tauri::command]

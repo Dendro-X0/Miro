@@ -32,7 +32,7 @@ function fromBase64(value: string): Uint8Array {
   return bytes;
 }
 
-async function deriveKey(passphrase: string, salt: Uint8Array): Promise<CryptoKey> {
+  async function deriveKey(passphrase: string, salt: Uint8Array): Promise<CryptoKey> {
   const subtle = getSubtle();
   const encoder = new TextEncoder();
   const saltBytes = new Uint8Array(salt);
@@ -81,20 +81,42 @@ export async function decryptBackupPayload(
   const salt = fromBase64(file.salt);
   const iv = fromBase64(file.iv);
   const key = await deriveKey(passphrase, salt);
-  const decrypted = await subtle.decrypt(
-    { name: "AES-GCM", iv: new Uint8Array(iv) },
-    key,
-    new Uint8Array(fromBase64(file.ciphertext)),
-  );
-  const parsed = JSON.parse(new TextDecoder().decode(decrypted)) as MiroBackupPayload;
+  let decrypted: ArrayBuffer;
+  try {
+    decrypted = await subtle.decrypt(
+      { name: "AES-GCM", iv: new Uint8Array(iv) },
+      key,
+      new Uint8Array(fromBase64(file.ciphertext)),
+    );
+  } catch {
+    throw new Error("Wrong passphrase or corrupted backup file");
+  }
+  let parsed: MiroBackupPayload;
+  try {
+    parsed = JSON.parse(new TextDecoder().decode(decrypted)) as MiroBackupPayload;
+  } catch {
+    throw new Error("Backup payload is not valid JSON");
+  }
   if (parsed.version !== MIRO_BACKUP_VERSION) {
     throw new Error("Unsupported backup version");
+  }
+  if (
+    !Array.isArray(parsed.sessions) ||
+    !Array.isArray(parsed.messages) ||
+    !Array.isArray(parsed.gallery)
+  ) {
+    throw new Error("Invalid backup payload structure");
   }
   return parsed;
 }
 
 export function parseEncryptedBackupJson(text: string): MiroEncryptedBackupFile {
-  const parsed = JSON.parse(text) as MiroEncryptedBackupFile;
+  let parsed: MiroEncryptedBackupFile;
+  try {
+    parsed = JSON.parse(text) as MiroEncryptedBackupFile;
+  } catch {
+    throw new Error("Not a Miro backup file (invalid JSON)");
+  }
   if (parsed.format !== "miro-backup-v1") {
     throw new Error("Not a Miro backup file");
   }

@@ -1,5 +1,11 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { VaultGalleryAsset } from "@miro/core";
+import {
+  estimateJsonSize,
+  MAX_GALLERY_STORE_CHARS,
+  MAX_VISION_DATA_URL_CHARS,
+  toStorageError,
+} from "./storage-limits";
 
 const GALLERY_KEY = "miro-mobile-gallery-v1";
 const GALLERY_MAX = 40;
@@ -25,7 +31,18 @@ async function readGallery(): Promise<MobileGalleryAsset[]> {
 }
 
 async function writeGallery(assets: readonly MobileGalleryAsset[]): Promise<void> {
-  await AsyncStorage.setItem(GALLERY_KEY, JSON.stringify(assets.slice(0, GALLERY_MAX)));
+  const trimmed = assets.slice(0, GALLERY_MAX);
+  const payload = JSON.stringify(trimmed);
+  if (payload.length > MAX_GALLERY_STORE_CHARS) {
+    throw new Error(
+      "Gallery is too large for this device. Delete some images and try again.",
+    );
+  }
+  try {
+    await AsyncStorage.setItem(GALLERY_KEY, payload);
+  } catch (error) {
+    throw toStorageError(error, "Failed to save gallery");
+  }
 }
 
 export async function listGalleryAssets(): Promise<readonly MobileGalleryAsset[]> {
@@ -38,6 +55,9 @@ export async function saveGalleryAsset(input: {
   readonly dataUrl: string;
   readonly sessionId?: string | null;
 }): Promise<MobileGalleryAsset> {
+  if (input.dataUrl.length > MAX_VISION_DATA_URL_CHARS) {
+    throw new Error("Generated image is too large to store in the mobile gallery.");
+  }
   const asset: MobileGalleryAsset = {
     id: `gallery-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
     prompt: input.prompt,
@@ -47,6 +67,11 @@ export async function saveGalleryAsset(input: {
     sessionId: input.sessionId ?? null,
   };
   const next = [asset, ...(await readGallery())].slice(0, GALLERY_MAX);
+  if (estimateJsonSize(next) > MAX_GALLERY_STORE_CHARS) {
+    throw new Error(
+      "Gallery is too large for this device. Delete some images and try again.",
+    );
+  }
   await writeGallery(next);
   return asset;
 }

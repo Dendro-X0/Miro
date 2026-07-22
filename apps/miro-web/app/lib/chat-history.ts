@@ -218,14 +218,17 @@ export async function saveChatMessage(
   sessionId: string,
   role: string,
   content: string,
+  messageId?: string,
 ): Promise<ChatMessageRecord> {
   if (isTauriDesktop()) {
-    return fromVaultMessage(await vault.vaultSaveMessage(sessionId, role, content));
+    return fromVaultMessage(
+      await vault.vaultSaveMessage(sessionId, role, content, messageId),
+    );
   }
   const store = readWebStore();
   const stamp = now();
   const message = {
-    id: createId(),
+    id: messageId?.trim() || createId(),
     sessionId,
     role,
     content,

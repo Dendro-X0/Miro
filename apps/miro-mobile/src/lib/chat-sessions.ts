@@ -1,5 +1,10 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getTextFromStoredContent } from "@miro/core";
+import {
+  estimateJsonSize,
+  MAX_CHAT_STORE_CHARS,
+  toStorageError,
+} from "./storage-limits";
 
 const STORE_KEY = "miro-mobile-chats-v1";
 
@@ -17,10 +22,14 @@ export interface MobileChatMessage {
   readonly createdAt: number;
 }
 
-interface ChatStore {
+export interface ChatStore {
   readonly sessions: readonly MobileChatSession[];
   readonly messages: readonly MobileChatMessage[];
 }
+
+type ChatStoreListener = () => void;
+
+const listeners = new Set<ChatStoreListener>();
 
 function emptyStore(): ChatStore {
   return { sessions: [], messages: [] };
@@ -28,6 +37,12 @@ function emptyStore(): ChatStore {
 
 function createId(prefix: string): string {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function notifyChatStoreChanged(): void {
+  for (const listener of listeners) {
+    listener();
+  }
 }
 
 async function readStore(): Promise<ChatStore> {
@@ -47,7 +62,25 @@ async function readStore(): Promise<ChatStore> {
 }
 
 async function writeStore(store: ChatStore): Promise<void> {
-  await AsyncStorage.setItem(STORE_KEY, JSON.stringify(store));
+  const payload = JSON.stringify(store);
+  if (payload.length > MAX_CHAT_STORE_CHARS) {
+    throw new Error(
+      "Chat history is too large for this device. Delete older chats or remove image attachments.",
+    );
+  }
+  try {
+    await AsyncStorage.setItem(STORE_KEY, payload);
+  } catch (error) {
+    throw toStorageError(error, "Failed to save chat history");
+  }
+}
+
+/** Subscribe to backup-import replacements (not routine message writes). */
+export function subscribeChatStore(listener: ChatStoreListener): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
 }
 
 export async function listSessions(): Promise<readonly MobileChatSession[]> {
@@ -98,18 +131,23 @@ export async function saveMessage(
   sessionId: string,
   role: "user" | "assistant",
   content: string,
+  messageId?: string,
 ): Promise<MobileChatMessage> {
   const store = await readStore();
   const message: MobileChatMessage = {
-    id: createId(role),
+    id: messageId?.trim() || createId(role),
     sessionId,
     role,
     content,
     createdAt: Date.now(),
   };
   const titleSource = role === "user" ? getTextFromStoredContent(content).trim() : "";
-  const titleFromUser = titleSource ? titleSource.slice(0, 48) : null;
-  await writeStore({
+  const titleFromUser = titleSource
+    ? titleSource.slice(0, 48)
+    : role === "user" && content.includes('"type":"image"')
+      ? "Image chat"
+      : null;
+  const nextStore: ChatStore = {
     sessions: store.sessions.map((session) => {
       if (session.id !== sessionId) {
         return session;
@@ -119,7 +157,13 @@ export async function saveMessage(
       return { ...session, title: nextTitle, updatedAt: Date.now() };
     }),
     messages: [...store.messages, message],
-  });
+  };
+  if (estimateJsonSize(nextStore) > MAX_CHAT_STORE_CHARS) {
+    throw new Error(
+      "Chat history is too large for this device. Delete older chats or remove image attachments.",
+    );
+  }
+  await writeStore(nextStore);
   return message;
 }
 
@@ -134,7 +178,7 @@ export async function replaceChatStore(store: ChatStore): Promise<void> {
     sessions: store.sessions,
     messages: store.messages,
   });
+  notifyChatStoreChanged();
 }
 
 export { createId };
-export type { ChatStore };

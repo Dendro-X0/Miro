@@ -33,10 +33,12 @@ import {
   listSessions,
   loadMessages,
   saveMessage,
+  subscribeChatStore,
   type MobileChatSession,
 } from "../src/lib/chat-sessions";
 import { saveGalleryAsset } from "../src/lib/gallery";
 import { shareActiveSessionMarkdown } from "../src/lib/share-export";
+import { assertVisionDataUrlSize } from "../src/lib/storage-limits";
 
 type AssistantMode = "chat" | "image";
 
@@ -105,24 +107,50 @@ export default function ChatScreen(): ReactElement {
     }
     let active = true;
     void (async () => {
-      const existing = await refreshSessions();
-      if (!active) {
-        return;
+      try {
+        const existing = await refreshSessions();
+        if (!active) {
+          return;
+        }
+        if (existing.length > 0) {
+          await openSession(existing[0].id);
+        } else {
+          const created = await createSession();
+          await refreshSessions();
+          await openSession(created.id);
+        }
+      } catch (caught) {
+        if (active) {
+          const detail = caught instanceof Error ? caught.message : "Failed to load chats";
+          setError(detail);
+        }
+      } finally {
+        if (active) {
+          setBootstrapping(false);
+        }
       }
-      if (existing.length > 0) {
-        await openSession(existing[0].id);
-      } else {
-        const created = await createSession();
-        await refreshSessions();
-        await openSession(created.id);
-      }
-      setBootstrapping(false);
     })();
     return () => {
       active = false;
       abortRef.current?.abort();
     };
   }, [openSession, ready, refreshSessions]);
+
+  useEffect(() => {
+    return subscribeChatStore(() => {
+      void (async () => {
+        const next = await refreshSessions();
+        if (next.length === 0) {
+          const created = await createSession();
+          await refreshSessions();
+          await openSession(created.id);
+          return;
+        }
+        const stillActive = next.some((session) => session.id === activeSessionId);
+        await openSession(stillActive ? activeSessionId : next[0].id);
+      })();
+    });
+  }, [activeSessionId, openSession, refreshSessions]);
 
   async function handleNewChat(): Promise<void> {
     const created = await createSession();
@@ -156,7 +184,7 @@ export default function ChatScreen(): ReactElement {
     }
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ["images"],
-      quality: 0.85,
+      quality: 0.7,
       base64: true,
     });
     if (result.canceled || !result.assets[0]) {
@@ -168,7 +196,14 @@ export default function ChatScreen(): ReactElement {
       setError("Could not read image data. Try another photo.");
       return;
     }
-    setPendingImage(`data:${mime};base64,${asset.base64}`);
+    const dataUrl = `data:${mime};base64,${asset.base64}`;
+    try {
+      assertVisionDataUrlSize(dataUrl);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Image too large");
+      return;
+    }
+    setPendingImage(dataUrl);
     setError(null);
     setMode("chat");
   }
@@ -188,7 +223,7 @@ export default function ChatScreen(): ReactElement {
             model: settings.selectedModelId,
             provider: settings.selectedProviderId,
             byokKey: settings.byokKey || undefined,
-            baseUrl: settings.apiBaseUrl || undefined,
+            baseUrl: settings.byokBaseUrl.trim() || undefined,
             signal: controller.signal,
           },
           (_delta, assembled) => {
@@ -218,7 +253,7 @@ export default function ChatScreen(): ReactElement {
             message.id === assistantId ? { ...message, content: assistantText } : message,
           ),
         );
-        await saveMessage(sessionId, "assistant", assistantText);
+        await saveMessage(sessionId, "assistant", assistantText, assistantId);
         await refreshSessions();
       } catch (caught) {
         if (controller.signal.aborted) {
@@ -241,7 +276,7 @@ export default function ChatScreen(): ReactElement {
     [
       apiClient,
       refreshSessions,
-      settings.apiBaseUrl,
+      settings.byokBaseUrl,
       settings.byokKey,
       settings.selectedModelId,
       settings.selectedProviderId,
@@ -271,7 +306,7 @@ export default function ChatScreen(): ReactElement {
       setDraft("");
       setError(null);
       setSending(true);
-      await saveMessage(activeSessionId, "user", trimmed);
+      await saveMessage(activeSessionId, "user", trimmed, userMessage.id);
       await refreshSessions();
 
       try {
@@ -280,7 +315,7 @@ export default function ChatScreen(): ReactElement {
           model: settings.selectedImageModelId,
           provider: settings.selectedProviderId,
           byokKey: settings.byokKey || undefined,
-          baseUrl: settings.apiBaseUrl || undefined,
+          baseUrl: settings.byokBaseUrl.trim() || undefined,
         });
         const imageUrl = result.images[0]?.url;
         if (!imageUrl) {
@@ -294,7 +329,7 @@ export default function ChatScreen(): ReactElement {
             message.id === assistantId ? { ...message, content } : message,
           ),
         );
-        await saveMessage(activeSessionId, "assistant", content);
+        await saveMessage(activeSessionId, "assistant", content, assistantId);
         await saveGalleryAsset({
           prompt: trimmed,
           dataUrl: imageUrl,
@@ -340,7 +375,7 @@ export default function ChatScreen(): ReactElement {
     setPendingImage(null);
     setError(null);
     setSending(true);
-    await saveMessage(activeSessionId, "user", storedContent);
+    await saveMessage(activeSessionId, "user", storedContent, userMessage.id);
     await refreshSessions();
     await streamAssistant(nextMessages, assistantId, activeSessionId);
   }, [
@@ -352,7 +387,7 @@ export default function ChatScreen(): ReactElement {
     pendingImage,
     refreshSessions,
     sending,
-    settings.apiBaseUrl,
+    settings.byokBaseUrl,
     settings.byokKey,
     settings.selectedImageModelId,
     settings.selectedProviderId,

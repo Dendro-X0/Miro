@@ -9,9 +9,18 @@ All notable changes to this project will be documented in this file.
 - Next-version target: native RN shell + `@miro/core` (not WebView)
 - Streaming chat via `MiroApiClient.streamChatText` with Stop
 - Chat / Image modes; gallery (AsyncStorage); vision attach (`expo-image-picker`)
-- Markdown export (share) + passphrase-encrypted `.mirobackup.json` (PBKDF2 / AES-GCM, shared with web)
+- Separate Miro `apiBaseUrl` vs optional provider `byokBaseUrl`
+- Storage quotas for vision/gallery; atomic backup import with rollback + chat refresh
+- Markdown export (share) + passphrase-encrypted `.mirobackup.json` (PBKDF2 / AES-GCM)
 - Shared helpers in `@miro/core` (`miro:parts`, backup crypto, `formatChatMarkdown`)
 - Docs: [`docs/mobile.md`](./docs/mobile.md); ROADMAP Milestones 1–3 complete
+
+### Hardening
+
+- Web/desktop persist client message IDs (regenerate/edit truncate works on live turns)
+- Desktop vault backup import runs in a SQLite transaction
+- API chat: rate limit + 32-message history truncate wired
+- `streamChat` surfaces API error bodies; stream empty-parse falls back to raw body
 
 ### Planned
 

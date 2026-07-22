@@ -23,6 +23,7 @@ export default function SettingsScreen(): ReactElement {
   const { settings, ready, updateSettings } = useMobileSettings();
   const [draftKey, setDraftKey] = useState("");
   const [draftBaseUrl, setDraftBaseUrl] = useState("");
+  const [draftByokBaseUrl, setDraftByokBaseUrl] = useState("");
   const [draftLabel, setDraftLabel] = useState("");
   const [models, setModels] = useState<readonly AiDiscoveredModel[]>([]);
   const [imageModels, setImageModels] = useState<readonly AiDiscoveredModel[]>([]);
@@ -40,8 +41,9 @@ export default function SettingsScreen(): ReactElement {
     }
     setDraftKey(settings.byokKey);
     setDraftBaseUrl(settings.apiBaseUrl);
+    setDraftByokBaseUrl(settings.byokBaseUrl);
     setDraftLabel(settings.byokLabel);
-  }, [ready, settings.apiBaseUrl, settings.byokKey, settings.byokLabel]);
+  }, [ready, settings.apiBaseUrl, settings.byokBaseUrl, settings.byokKey, settings.byokLabel]);
 
   const client = useMemo(
     () => createMiroApiClient({ baseUrl: settings.apiBaseUrl }),
@@ -61,7 +63,7 @@ export default function SettingsScreen(): ReactElement {
       const listed = await client.listModels({
         provider: settings.selectedProviderId,
         byokKey: settings.byokKey || undefined,
-        baseUrl: settings.apiBaseUrl || undefined,
+        baseUrl: settings.byokBaseUrl.trim() || undefined,
       });
       const textModels = listed.models.filter((model) => model.kind !== "image");
       const nextImageModels = listed.models.filter((model) => model.kind === "image");
@@ -84,7 +86,7 @@ export default function SettingsScreen(): ReactElement {
     } finally {
       setBusy(false);
     }
-  }, [client, settings.apiBaseUrl, settings.byokKey, settings.selectedProviderId]);
+  }, [client, settings.byokBaseUrl, settings.byokKey, settings.selectedProviderId]);
 
   useEffect(() => {
     if (!ready) {
@@ -97,6 +99,7 @@ export default function SettingsScreen(): ReactElement {
     await updateSettings({
       byokKey: draftKey.trim(),
       apiBaseUrl: draftBaseUrl.trim() || settings.apiBaseUrl,
+      byokBaseUrl: draftByokBaseUrl.trim(),
       byokLabel: draftLabel.trim(),
     });
     setStatus("Saved. Keys stay in SecureStore on this device.");
@@ -132,7 +135,7 @@ export default function SettingsScreen(): ReactElement {
               setBackupStatus(null);
               try {
                 await pickAndImportEncryptedBackup(importPassphrase);
-                setBackupStatus("Backup imported. Open Chats to see restored sessions.");
+                  setBackupStatus("Backup imported. Chats will refresh automatically.");
                 setImportPassphrase("");
               } catch (error) {
                 const message =
@@ -196,6 +199,20 @@ export default function SettingsScreen(): ReactElement {
             placeholder="Label (optional)"
             placeholderTextColor="#64748b"
           />
+          <Text style={[styles.subLabel, styles.mt8]}>Provider / gateway base URL (optional)</Text>
+          <TextInput
+            style={styles.input}
+            value={draftByokBaseUrl}
+            onChangeText={setDraftByokBaseUrl}
+            autoCapitalize="none"
+            autoCorrect={false}
+            placeholder="https://openrouter.ai/api/v1"
+            placeholderTextColor="#64748b"
+          />
+          <Text style={styles.hint}>
+            For OpenRouter, Groq, remote Ollama, etc. Leave empty to use the provider default. This is
+            not the Miro API URL above.
+          </Text>
           <Pressable style={styles.primaryButton} onPress={() => void handleSave()}>
             <Text style={styles.primaryButtonText}>Save credentials</Text>
           </Pressable>

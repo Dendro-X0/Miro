@@ -34,11 +34,14 @@ You can also set the API base URL in **Settings** inside the app.
 - Streaming chat (`MiroApiClient.streamChatText`) with Stop
 - Multi-chat sessions (create / switch / delete)
 - BYOK in SecureStore; provider + model discovery via `/ai/config` and `/ai/models`
-- Optional API base URL for OpenRouter / remote Ollama / LAN API
+- Optional Miro API base URL (LAN / emulator)
+- Separate optional provider/gateway base URL (`byokBaseUrl`) — not the Miro API host
+- Vision + gallery size caps; quota-aware AsyncStorage writes
+- Atomic backup import (rollback) and live chat refresh after import
+- Markdown export (share sheet) + passphrase-encrypted backup import/export (interop with web/desktop)
 - Light assistant markdown (fences, headings, lists, bold/italic, inline code)
 - Image mode → `generateImage` + Gallery (AsyncStorage, max 40)
 - Vision attach (`expo-image-picker`) for supported providers
-- Markdown export (share sheet) + passphrase-encrypted backup import/export (interop with web/desktop)
 
 ## Still to come
 

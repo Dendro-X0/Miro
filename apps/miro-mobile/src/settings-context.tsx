@@ -1,5 +1,13 @@
 import type { ReactElement, ReactNode } from "react";
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   defaultMobileAiSettings,
   loadMobileAiSettings,
@@ -22,6 +30,8 @@ export function MobileSettingsProvider(props: {
   const { children } = props;
   const [settings, setSettings] = useState<MobileAiSettings>(defaultMobileAiSettings());
   const [ready, setReady] = useState(false);
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
 
   useEffect(() => {
     let active = true;
@@ -30,6 +40,7 @@ export function MobileSettingsProvider(props: {
       if (!active) {
         return;
       }
+      settingsRef.current = loaded;
       setSettings(loaded);
       setReady(true);
     })();
@@ -39,10 +50,11 @@ export function MobileSettingsProvider(props: {
   }, []);
 
   const updateSettings = useCallback(async (update: MobileAiSettingsUpdate): Promise<void> => {
-    const next = { ...settings, ...update };
+    const next = { ...settingsRef.current, ...update };
+    settingsRef.current = next;
     setSettings(next);
     await saveMobileAiSettings(next);
-  }, [settings]);
+  }, []);
 
   const value = useMemo(
     (): MobileSettingsContextValue => ({ settings, ready, updateSettings }),

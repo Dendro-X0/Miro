@@ -77,8 +77,14 @@ export async function vaultSaveMessage(
   sessionId: string,
   role: string,
   content: string,
+  messageId?: string,
 ): Promise<VaultMessageRecord> {
-  return invoke<VaultMessageRecord>("vault_save_message", { sessionId, role, content });
+  return invoke<VaultMessageRecord>("vault_save_message", {
+    sessionId,
+    role,
+    content,
+    messageId: messageId ?? null,
+  });
 }
 
 export async function vaultLoadMessages(sessionId: string): Promise<readonly VaultMessageRecord[]> {

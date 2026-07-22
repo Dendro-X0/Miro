@@ -256,11 +256,15 @@ pub fn save_message(
     session_id: String,
     role: String,
     content: String,
+    message_id: Option<String>,
 ) -> Result<VaultMessageRecord, CommandError> {
     let state = vault_state(app)?;
     let conn = state.conn.lock().map_err(|_| CommandError::Vault("vault lock poisoned".into()))?;
     let now = chrono_now();
-    let id = uuid::Uuid::new_v4().to_string();
+    let id = message_id
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
     let encrypted = state.cipher.encrypt(&content)?;
     conn.execute(
         "INSERT INTO messages (id, session_id, role, content_encrypted, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
@@ -499,9 +503,13 @@ pub fn import_backup(app: &AppHandle, payload: VaultBackupPayload) -> Result<(),
     }
     let state = vault_state(app)?;
     let conn = state.conn.lock().map_err(|_| CommandError::Vault("vault lock poisoned".into()))?;
-    conn.execute("DELETE FROM gallery_assets", [])?;
-    conn.execute("DELETE FROM messages", [])?;
-    conn.execute("DELETE FROM sessions", [])?;
+    let tx = conn
+        .unchecked_transaction()
+        .map_err(|error| CommandError::Vault(format!("failed to begin backup import: {error}")))?;
+
+    tx.execute("DELETE FROM gallery_assets", [])?;
+    tx.execute("DELETE FROM messages", [])?;
+    tx.execute("DELETE FROM sessions", [])?;
 
     for session in payload.sessions {
         let instructions_encrypted = if session.instructions.trim().is_empty() {
@@ -509,7 +517,7 @@ pub fn import_backup(app: &AppHandle, payload: VaultBackupPayload) -> Result<(),
         } else {
             Some(state.cipher.encrypt(session.instructions.trim())?)
         };
-        conn.execute(
+        tx.execute(
             "INSERT INTO sessions (id, title, pinned, created_at, updated_at, instructions_encrypted) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
             params![
                 session.id,
@@ -524,7 +532,7 @@ pub fn import_backup(app: &AppHandle, payload: VaultBackupPayload) -> Result<(),
 
     for message in payload.messages {
         let encrypted = state.cipher.encrypt(&message.content)?;
-        conn.execute(
+        tx.execute(
             "INSERT INTO messages (id, session_id, role, content_encrypted, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
             params![message.id, message.session_id, message.role, encrypted, message.created_at],
         )?;
@@ -533,7 +541,7 @@ pub fn import_backup(app: &AppHandle, payload: VaultBackupPayload) -> Result<(),
     for asset in payload.gallery {
         let prompt_encrypted = state.cipher.encrypt(&asset.prompt)?;
         let data_encrypted = state.cipher.encrypt(&asset.data_url)?;
-        conn.execute(
+        tx.execute(
             "INSERT INTO gallery_assets (id, prompt_encrypted, mime, data_encrypted, session_id, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
             params![
                 asset.id,
@@ -546,6 +554,8 @@ pub fn import_backup(app: &AppHandle, payload: VaultBackupPayload) -> Result<(),
         )?;
     }
 
+    tx.commit()
+        .map_err(|error| CommandError::Vault(format!("failed to commit backup import: {error}")))?;
     Ok(())
 }
 

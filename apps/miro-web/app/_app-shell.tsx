@@ -53,6 +53,7 @@ import {
   supportsVisionProvider,
   type StoredMessagePart,
 } from "./lib/message-parts";
+import { formatGeneratedImageContent } from "@miro/core";
 import type { ChatImageAttachmentInput } from "./shell/types";
 import { useAiModelCatalog } from "./lib/use-ai-model-catalog";
 import { providerHasCredentials } from "./lib/ai-model-catalog";
@@ -136,11 +137,11 @@ export default function AppShell(props: AppShellProps): ReactElement {
     await renameChatSession(sessionId, titleFromPrompt(prompt));
   }
 
-  async function persistMessage(role: string, content: string): Promise<void> {
+  async function persistMessage(role: string, content: string, messageId?: string): Promise<void> {
     if (!persistHistory || !activeSessionIdRef.current || !content.trim()) {
       return;
     }
-    await saveChatMessage(activeSessionIdRef.current, role, content);
+    await saveChatMessage(activeSessionIdRef.current, role, content, messageId);
     if (role === "user") {
       const text =
         deserializeMessageContent(content).find((part) => part.type === "text")?.text ?? content;
@@ -185,6 +186,7 @@ export default function AppShell(props: AppShellProps): ReactElement {
       void persistMessage(
         message.role,
         serializeMessageContent(getUiMessageParts(message)),
+        message.id,
       );
     },
     onError: (err: unknown) => {
@@ -326,8 +328,13 @@ export default function AppShell(props: AppShellProps): ReactElement {
       setActiveSession(created.id);
     }
     const parts: StoredMessagePart[] = [{ type: "text", text: trimmed }];
-    await append({ role: "user", parts: [{ type: "text", text: trimmed }] });
-    await persistMessage("user", serializeMessageContent(parts));
+    const messageId = crypto.randomUUID();
+    await append({
+      id: messageId,
+      role: "user",
+      parts: [{ type: "text", text: trimmed }],
+    });
+    await persistMessage("user", serializeMessageContent(parts), messageId);
   }
 
   async function handleAttachImage(input: ChatImageAttachmentInput): Promise<void> {
@@ -347,14 +354,16 @@ export default function AppShell(props: AppShellProps): ReactElement {
       { type: "text", text: prompt },
       { type: "image", image: input.dataUrl },
     ];
+    const messageId = crypto.randomUUID();
     await append({
+      id: messageId,
       role: "user",
       parts: [
         { type: "text", text: prompt },
         { type: "image", image: input.dataUrl },
       ],
     });
-    await persistMessage("user", serializeMessageContent(parts));
+    await persistMessage("user", serializeMessageContent(parts), messageId);
   }
 
   async function handleRegenerate(): Promise<void> {
@@ -381,8 +390,20 @@ export default function AppShell(props: AppShellProps): ReactElement {
     }
     await truncateChatMessagesAfter(activeSessionIdRef.current, messageId);
     setMessages(messages.slice(0, messageIndex));
-    await append({ role: "user", parts: [{ type: "text", text: trimmed }] });
-    await persistMessage("user", trimmed);
+    const existingParts = getUiMessageParts(messages[messageIndex]);
+    const imageParts = existingParts.filter((part) => part.type === "image");
+    const parts: StoredMessagePart[] = [{ type: "text", text: trimmed }, ...imageParts];
+    const nextId = crypto.randomUUID();
+    await append({
+      id: nextId,
+      role: "user",
+      parts: parts.map((part) =>
+        part.type === "text"
+          ? { type: "text" as const, text: part.text }
+          : { type: "image" as const, image: part.image },
+      ),
+    });
+    await persistMessage("user", serializeMessageContent(parts), nextId);
   }
 
   async function handleSaveSessionInstructions(): Promise<void> {
@@ -422,7 +443,8 @@ export default function AppShell(props: AppShellProps): ReactElement {
       setActiveSession(created.id);
     }
 
-    const userMsgId = Date.now().toString();
+    const userMsgId = crypto.randomUUID();
+    const assistantMsgId = crypto.randomUUID();
     const newMessages: UIMessage[] = [
       ...messages,
       {
@@ -434,7 +456,7 @@ export default function AppShell(props: AppShellProps): ReactElement {
     setMessages(newMessages);
     setImageError(null);
     setImageBusy(true);
-    await persistMessage("user", prompt);
+    await persistMessage("user", prompt, userMsgId);
 
     try {
       const data = await miroApi.generateImage({
@@ -446,16 +468,16 @@ export default function AppShell(props: AppShellProps): ReactElement {
       });
       if (data.images.length > 0) {
         const imageUrl = data.images[0].url;
-        const assistantText = `Generated image: ${imageUrl}`;
+        const assistantText = formatGeneratedImageContent(imageUrl);
         setMessages([
           ...newMessages,
           {
-            id: Date.now().toString(),
+            id: assistantMsgId,
             role: "assistant",
             parts: [{ type: "text", text: assistantText }],
           } as UIMessage,
         ]);
-        await persistMessage("assistant", assistantText);
+        await persistMessage("assistant", assistantText, assistantMsgId);
         await saveGalleryAsset({
           prompt,
           dataUrl: imageUrl,

@@ -137,13 +137,16 @@ export async function consumeUiMessageStream(
   const decoder = new TextDecoder();
   let buffer = "";
   let assembled = "";
+  let raw = "";
 
   while (true) {
     const { done, value } = await reader.read();
     if (done) {
       break;
     }
-    buffer += decoder.decode(value, { stream: true });
+    const chunk = decoder.decode(value, { stream: true });
+    raw += chunk;
+    buffer += chunk;
     const lines = buffer.split("\n");
     buffer = lines.pop() ?? "";
     for (const line of lines) {
@@ -156,7 +159,11 @@ export async function consumeUiMessageStream(
     }
   }
 
-  buffer += decoder.decode();
+  const tail = decoder.decode();
+  if (tail) {
+    raw += tail;
+    buffer += tail;
+  }
   if (buffer.trim()) {
     const delta = extractDeltaFromStreamLine(buffer);
     if (delta) {
@@ -170,7 +177,11 @@ export async function consumeUiMessageStream(
   }
 
   // Fallback: some gateways may not use the `0:` protocol.
-  return assembled.trim();
+  const rawFallback = extractTextFromUiMessageStream(raw);
+  if (rawFallback && onDelta) {
+    onDelta(rawFallback, rawFallback);
+  }
+  return rawFallback;
 }
 
 export class MiroApiClient {
@@ -231,7 +242,16 @@ export class MiroApiClient {
     });
 
     if (!response.ok) {
-      throw new Error(`Chat request failed (${response.status})`);
+      let detail = `Chat request failed (${response.status})`;
+      try {
+        const payload = (await response.json()) as { readonly error?: string };
+        if (payload.error) {
+          detail = payload.error;
+        }
+      } catch {
+        // keep status text
+      }
+      throw new Error(detail);
     }
 
     return response;

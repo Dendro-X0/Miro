@@ -7,6 +7,8 @@ const BYOK_SECURE_KEY = "miro-byok-api-key";
 
 export interface MobileAiSettings {
   readonly apiBaseUrl: string;
+  /** Optional OpenAI-compatible / gateway URL for BYOK (not the Miro API host). */
+  readonly byokBaseUrl: string;
   readonly selectedProviderId: string;
   readonly selectedModelId: string;
   readonly selectedImageModelId: string;
@@ -19,6 +21,7 @@ export type MobileAiSettingsUpdate = Partial<MobileAiSettings>;
 export function defaultMobileAiSettings(): MobileAiSettings {
   return {
     apiBaseUrl: resolveMiroApiBaseUrl(),
+    byokBaseUrl: "",
     selectedProviderId: "openai-compatible",
     selectedModelId: "gpt-4o-mini",
     selectedImageModelId: "dall-e-3",
@@ -27,17 +30,26 @@ export function defaultMobileAiSettings(): MobileAiSettings {
   };
 }
 
+async function readByokKey(): Promise<string> {
+  try {
+    return (await SecureStore.getItemAsync(BYOK_SECURE_KEY)) ?? "";
+  } catch {
+    return "";
+  }
+}
+
 export async function loadMobileAiSettings(): Promise<MobileAiSettings> {
   const defaults = defaultMobileAiSettings();
+  const byokKey = await readByokKey();
   try {
     const raw = await AsyncStorage.getItem(SETTINGS_KEY);
-    const byokKey = (await SecureStore.getItemAsync(BYOK_SECURE_KEY)) ?? "";
     if (!raw) {
       return { ...defaults, byokKey };
     }
     const parsed = JSON.parse(raw) as Partial<MobileAiSettings>;
     return {
       apiBaseUrl: parsed.apiBaseUrl?.trim() || defaults.apiBaseUrl,
+      byokBaseUrl: parsed.byokBaseUrl?.trim() ?? "",
       selectedProviderId: parsed.selectedProviderId || defaults.selectedProviderId,
       selectedModelId: parsed.selectedModelId || defaults.selectedModelId,
       selectedImageModelId: parsed.selectedImageModelId || defaults.selectedImageModelId,
@@ -45,7 +57,8 @@ export async function loadMobileAiSettings(): Promise<MobileAiSettings> {
       byokLabel: parsed.byokLabel ?? "",
     };
   } catch {
-    return defaults;
+    // Preserve SecureStore key even when AsyncStorage JSON is corrupt.
+    return { ...defaults, byokKey };
   }
 }
 
@@ -60,6 +73,7 @@ export async function saveMobileAiSettings(settings: MobileAiSettings): Promise<
     SETTINGS_KEY,
     JSON.stringify({
       apiBaseUrl: settings.apiBaseUrl,
+      byokBaseUrl: settings.byokBaseUrl,
       selectedProviderId: settings.selectedProviderId,
       selectedModelId: settings.selectedModelId,
       selectedImageModelId: settings.selectedImageModelId,
