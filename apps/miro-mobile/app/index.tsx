@@ -1,8 +1,9 @@
 import type { ReactElement } from "react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
+  Image,
   Modal,
   Pressable,
   SafeAreaView,
@@ -12,10 +13,16 @@ import {
   View,
 } from "react-native";
 import { Link } from "expo-router";
+import * as ImagePicker from "expo-image-picker";
 import {
   createMiroApiClient,
+  deserializeMessageContent,
+  formatGeneratedImageContent,
+  serializeMessageContent,
+  supportsVisionProvider,
   type ApiUiMessage,
   type ChatMessage,
+  type StoredMessagePart,
 } from "@miro/core";
 import { tokens } from "@miro/ui";
 import { ChatBubble } from "../src/components/ChatBubble";
@@ -28,12 +35,23 @@ import {
   saveMessage,
   type MobileChatSession,
 } from "../src/lib/chat-sessions";
+import { saveGalleryAsset } from "../src/lib/gallery";
+import { shareActiveSessionMarkdown } from "../src/lib/share-export";
+
+type AssistantMode = "chat" | "image";
 
 function toApiMessages(messages: readonly ChatMessage[]): readonly ApiUiMessage[] {
-  return messages.map((message) => ({
-    role: message.role,
-    content: message.content,
-  }));
+  return messages
+    .filter((message) => message.role === "user" || message.role === "assistant")
+    .map((message) => {
+      const parts = deserializeMessageContent(message.content);
+      const hasImage = parts.some((part) => part.type === "image");
+      if (hasImage || parts.length > 1) {
+        return { role: message.role, parts };
+      }
+      const text = parts[0]?.type === "text" ? parts[0].text : message.content;
+      return { role: message.role, content: text };
+    });
 }
 
 export default function ChatScreen(): ReactElement {
@@ -51,6 +69,13 @@ export default function ChatScreen(): ReactElement {
   const [error, setError] = useState<string | null>(null);
   const [sessionsOpen, setSessionsOpen] = useState(false);
   const [bootstrapping, setBootstrapping] = useState(true);
+  const [mode, setMode] = useState<AssistantMode>("chat");
+  const [pendingImage, setPendingImage] = useState<string | null>(null);
+  const [exportBusy, setExportBusy] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
+  const listRef = useRef<FlatList<ChatMessage> | null>(null);
+
+  const visionOk = supportsVisionProvider(settings.selectedProviderId);
 
   const refreshSessions = useCallback(async (): Promise<readonly MobileChatSession[]> => {
     const next = await listSessions();
@@ -59,6 +84,9 @@ export default function ChatScreen(): ReactElement {
   }, []);
 
   const openSession = useCallback(async (sessionId: string): Promise<void> => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setSending(false);
     const records = await loadMessages(sessionId);
     setActiveSessionId(sessionId);
     setMessages(
@@ -92,6 +120,7 @@ export default function ChatScreen(): ReactElement {
     })();
     return () => {
       active = false;
+      abortRef.current?.abort();
     };
   }, [openSession, ready, refreshSessions]);
 
@@ -113,71 +142,245 @@ export default function ChatScreen(): ReactElement {
     }
   }
 
+  function handleStop(): void {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setSending(false);
+  }
+
+  async function handlePickImage(): Promise<void> {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      setError("Photo library permission is required to attach images.");
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      quality: 0.85,
+      base64: true,
+    });
+    if (result.canceled || !result.assets[0]) {
+      return;
+    }
+    const asset = result.assets[0];
+    const mime = asset.mimeType ?? "image/jpeg";
+    if (!asset.base64) {
+      setError("Could not read image data. Try another photo.");
+      return;
+    }
+    setPendingImage(`data:${mime};base64,${asset.base64}`);
+    setError(null);
+    setMode("chat");
+  }
+
+  const streamAssistant = useCallback(
+    async (
+      historyForApi: readonly ChatMessage[],
+      assistantId: string,
+      sessionId: string,
+    ): Promise<void> => {
+      const controller = new AbortController();
+      abortRef.current = controller;
+      try {
+        const assistantText = await apiClient.streamChatText(
+          {
+            messages: toApiMessages(historyForApi),
+            model: settings.selectedModelId,
+            provider: settings.selectedProviderId,
+            byokKey: settings.byokKey || undefined,
+            baseUrl: settings.apiBaseUrl || undefined,
+            signal: controller.signal,
+          },
+          (_delta, assembled) => {
+            setMessages((previous) =>
+              previous.map((message) =>
+                message.id === assistantId ? { ...message, content: assembled } : message,
+              ),
+            );
+            requestAnimationFrame(() => {
+              listRef.current?.scrollToEnd({ animated: false });
+            });
+          },
+        );
+
+        if (controller.signal.aborted) {
+          return;
+        }
+
+        if (!assistantText.trim()) {
+          setMessages((previous) => previous.filter((message) => message.id !== assistantId));
+          setError("Received an empty response from Miro.");
+          return;
+        }
+
+        setMessages((previous) =>
+          previous.map((message) =>
+            message.id === assistantId ? { ...message, content: assistantText } : message,
+          ),
+        );
+        await saveMessage(sessionId, "assistant", assistantText);
+        await refreshSessions();
+      } catch (caught) {
+        if (controller.signal.aborted) {
+          return;
+        }
+        setMessages((previous) =>
+          previous.filter((message) => !(message.id === assistantId && !message.content.trim())),
+        );
+        const detail = caught instanceof Error ? caught.message : "Request failed";
+        setError(
+          `Unable to reach Miro (${detail}). Check API URL, key, and that @miro/api is running.`,
+        );
+      } finally {
+        if (abortRef.current === controller) {
+          abortRef.current = null;
+        }
+        setSending(false);
+      }
+    },
+    [
+      apiClient,
+      refreshSessions,
+      settings.apiBaseUrl,
+      settings.byokKey,
+      settings.selectedModelId,
+      settings.selectedProviderId,
+    ],
+  );
+
   const handleSend = useCallback(async (): Promise<void> => {
     if (sending || !activeSessionId) {
       return;
     }
     const trimmed = draft.trim();
-    if (!trimmed) {
+    if (mode === "image") {
+      if (!trimmed) {
+        return;
+      }
+      const userMessage: ChatMessage = {
+        id: `user-${Date.now().toString(36)}`,
+        role: "user",
+        content: trimmed,
+      };
+      const assistantId = `assistant-${Date.now().toString(36)}`;
+      setMessages((previous) => [
+        ...previous,
+        userMessage,
+        { id: assistantId, role: "assistant", content: "" },
+      ]);
+      setDraft("");
+      setError(null);
+      setSending(true);
+      await saveMessage(activeSessionId, "user", trimmed);
+      await refreshSessions();
+
+      try {
+        const result = await apiClient.generateImage({
+          prompt: trimmed,
+          model: settings.selectedImageModelId,
+          provider: settings.selectedProviderId,
+          byokKey: settings.byokKey || undefined,
+          baseUrl: settings.apiBaseUrl || undefined,
+        });
+        const imageUrl = result.images[0]?.url;
+        if (!imageUrl) {
+          setMessages((previous) => previous.filter((message) => message.id !== assistantId));
+          setError("Image generation returned no images.");
+          return;
+        }
+        const content = formatGeneratedImageContent(imageUrl);
+        setMessages((previous) =>
+          previous.map((message) =>
+            message.id === assistantId ? { ...message, content } : message,
+          ),
+        );
+        await saveMessage(activeSessionId, "assistant", content);
+        await saveGalleryAsset({
+          prompt: trimmed,
+          dataUrl: imageUrl,
+          sessionId: activeSessionId,
+        });
+        await refreshSessions();
+      } catch (caught) {
+        setMessages((previous) =>
+          previous.filter((message) => !(message.id === assistantId && !message.content.trim())),
+        );
+        const detail = caught instanceof Error ? caught.message : "Request failed";
+        setError(`Image generation failed (${detail}).`);
+      } finally {
+        setSending(false);
+      }
       return;
     }
 
+    if (!trimmed && !pendingImage) {
+      return;
+    }
+
+    const prompt = trimmed || (pendingImage ? "What's in this image?" : "");
+    const parts: StoredMessagePart[] = pendingImage
+      ? [
+          { type: "text", text: prompt },
+          { type: "image", image: pendingImage },
+        ]
+      : [{ type: "text", text: prompt }];
+    const storedContent = serializeMessageContent(parts);
     const userMessage: ChatMessage = {
       id: `user-${Date.now().toString(36)}`,
       role: "user",
-      content: trimmed,
+      content: storedContent,
     };
+    const assistantId = `assistant-${Date.now().toString(36)}`;
     const nextMessages: readonly ChatMessage[] = [...messages, userMessage];
-    setMessages(nextMessages);
+    setMessages([
+      ...nextMessages,
+      { id: assistantId, role: "assistant", content: "" },
+    ]);
     setDraft("");
+    setPendingImage(null);
     setError(null);
     setSending(true);
-    await saveMessage(activeSessionId, "user", trimmed);
+    await saveMessage(activeSessionId, "user", storedContent);
     await refreshSessions();
-
-    try {
-      const assistantText = await apiClient.completeChat({
-        messages: toApiMessages(nextMessages),
-        model: settings.selectedModelId,
-        provider: settings.selectedProviderId,
-        byokKey: settings.byokKey || undefined,
-        baseUrl: settings.apiBaseUrl || undefined,
-      });
-
-      if (!assistantText) {
-        setError("Received an empty response from Miro.");
-        return;
-      }
-
-      const assistantMessage: ChatMessage = {
-        id: `assistant-${Date.now().toString(36)}`,
-        role: "assistant",
-        content: assistantText,
-      };
-      setMessages([...nextMessages, assistantMessage]);
-      await saveMessage(activeSessionId, "assistant", assistantText);
-      await refreshSessions();
-    } catch {
-      setError("Unable to reach Miro. Check API URL, key, and that @miro/api is running.");
-    } finally {
-      setSending(false);
-    }
+    await streamAssistant(nextMessages, assistantId, activeSessionId);
   }, [
     activeSessionId,
     apiClient,
     draft,
     messages,
+    mode,
+    pendingImage,
     refreshSessions,
     sending,
     settings.apiBaseUrl,
     settings.byokKey,
-    settings.selectedModelId,
+    settings.selectedImageModelId,
     settings.selectedProviderId,
+    streamAssistant,
   ]);
 
-  const disableSend = sending || draft.trim().length === 0 || !activeSessionId;
+  const disableSend =
+    sending ||
+    !activeSessionId ||
+    (mode === "image" ? draft.trim().length === 0 : draft.trim().length === 0 && !pendingImage);
   const activeTitle =
     sessions.find((session) => session.id === activeSessionId)?.title ?? "Chat";
+
+  async function handleExportMarkdown(): Promise<void> {
+    if (!activeSessionId || exportBusy) {
+      return;
+    }
+    setExportBusy(true);
+    setError(null);
+    try {
+      await shareActiveSessionMarkdown(activeSessionId, activeTitle);
+    } catch (caught) {
+      const detail = caught instanceof Error ? caught.message : "Export failed";
+      setError(detail);
+    } finally {
+      setExportBusy(false);
+    }
+  }
 
   if (!ready || bootstrapping) {
     return (
@@ -196,13 +399,27 @@ export default function ChatScreen(): ReactElement {
           <Text style={styles.headerChipText}>Chats</Text>
         </Pressable>
         <View style={styles.headerCenter}>
+          <Text style={styles.brand}>Miro</Text>
           <Text style={styles.title} numberOfLines={1}>
             {activeTitle}
           </Text>
           <Text style={styles.subtitle} numberOfLines={1}>
-            {settings.selectedProviderId} · {settings.selectedModelId}
+            {settings.selectedProviderId} ·{" "}
+            {mode === "image" ? settings.selectedImageModelId : settings.selectedModelId}
           </Text>
         </View>
+        <Link href="/gallery" asChild>
+          <Pressable style={styles.headerChip}>
+            <Text style={styles.headerChipText}>Gallery</Text>
+          </Pressable>
+        </Link>
+        <Pressable
+          style={styles.headerChip}
+          onPress={() => void handleExportMarkdown()}
+          disabled={exportBusy || messages.length === 0}
+        >
+          <Text style={styles.headerChipText}>{exportBusy ? "…" : "MD"}</Text>
+        </Pressable>
         <Link href="/settings" asChild>
           <Pressable style={styles.headerChip}>
             <Text style={styles.headerChipText}>Settings</Text>
@@ -210,10 +427,34 @@ export default function ChatScreen(): ReactElement {
         </Link>
       </View>
 
+      <View style={styles.modeRow}>
+        <Pressable
+          style={[styles.modeChip, mode === "chat" ? styles.modeChipActive : null]}
+          onPress={() => setMode("chat")}
+        >
+          <Text style={[styles.modeChipText, mode === "chat" ? styles.modeChipTextActive : null]}>
+            Chat
+          </Text>
+        </Pressable>
+        <Pressable
+          style={[styles.modeChip, mode === "image" ? styles.modeChipActive : null]}
+          onPress={() => {
+            setMode("image");
+            setPendingImage(null);
+          }}
+        >
+          <Text style={[styles.modeChipText, mode === "image" ? styles.modeChipTextActive : null]}>
+            Image
+          </Text>
+        </Pressable>
+      </View>
+
       <FlatList
+        ref={listRef}
         data={messages}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.messages}
+        onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
         ListEmptyComponent={
           <View style={styles.emptyState}>
             <Text style={styles.emptyTitle}>Start a conversation</Text>
@@ -222,7 +463,16 @@ export default function ChatScreen(): ReactElement {
             </Text>
           </View>
         }
-        renderItem={({ item }) => <ChatBubble message={item} />}
+        renderItem={({ item }) => (
+          <ChatBubble
+            message={item}
+            streaming={
+              sending &&
+              item.role === "assistant" &&
+              item.id === messages[messages.length - 1]?.id
+            }
+          />
+        )}
       />
 
       {error ? (
@@ -231,27 +481,50 @@ export default function ChatScreen(): ReactElement {
         </View>
       ) : null}
 
+      {pendingImage ? (
+        <View style={styles.attachPreview}>
+          <Image source={{ uri: pendingImage }} style={styles.attachThumb} />
+          <Text style={styles.attachLabel} numberOfLines={1}>
+            Image attached
+          </Text>
+          <Pressable onPress={() => setPendingImage(null)}>
+            <Text style={styles.clearAttach}>Remove</Text>
+          </Pressable>
+        </View>
+      ) : null}
+
       <View style={styles.composer}>
+        {mode === "chat" && visionOk ? (
+          <Pressable
+            style={styles.attachButton}
+            onPress={() => void handlePickImage()}
+            disabled={sending}
+          >
+            <Text style={styles.attachButtonText}>＋</Text>
+          </Pressable>
+        ) : null}
         <TextInput
           style={styles.input}
-          placeholder="Ask Miro..."
+          placeholder={mode === "image" ? "Describe an image…" : "Ask Miro..."}
           placeholderTextColor="#64748b"
           value={draft}
           onChangeText={setDraft}
           editable={!sending}
           multiline
         />
-        <Pressable
-          style={[styles.sendButton, disableSend ? styles.sendButtonDisabled : null]}
-          onPress={() => void handleSend()}
-          disabled={disableSend}
-        >
-          {sending ? (
-            <ActivityIndicator color="#020617" size="small" />
-          ) : (
-            <Text style={styles.sendLabel}>Send</Text>
-          )}
-        </Pressable>
+        {sending ? (
+          <Pressable style={styles.stopButton} onPress={handleStop}>
+            <Text style={styles.stopLabel}>Stop</Text>
+          </Pressable>
+        ) : (
+          <Pressable
+            style={[styles.sendButton, disableSend ? styles.sendButtonDisabled : null]}
+            onPress={() => void handleSend()}
+            disabled={disableSend}
+          >
+            <Text style={styles.sendLabel}>{mode === "image" ? "Generate" : "Send"}</Text>
+          </Pressable>
+        )}
       </View>
 
       <Modal visible={sessionsOpen} animationType="slide" transparent>
@@ -310,12 +583,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingTop: 8,
     paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: "#111827",
   },
   headerCenter: {
     flex: 1,
     minWidth: 0,
   },
+  brand: {
+    fontSize: 10,
+    fontWeight: "700",
+    letterSpacing: 1.6,
+    textTransform: "uppercase",
+    color: "#38bdf8",
+  },
   title: {
+    marginTop: 2,
     fontSize: 15,
     fontWeight: "600",
     color: "#e5e7eb",
@@ -331,11 +614,38 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     borderWidth: 1,
     borderColor: "#1e293b",
+    backgroundColor: "#020617",
   },
   headerChipText: {
     color: "#e5e7eb",
     fontSize: 12,
     fontWeight: "600",
+  },
+  modeRow: {
+    flexDirection: "row",
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  modeChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#1e293b",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: "#020617",
+  },
+  modeChipActive: {
+    borderColor: "#0ea5e9",
+    backgroundColor: "rgba(14,165,233,0.15)",
+  },
+  modeChipText: {
+    color: "#94a3b8",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  modeChipTextActive: {
+    color: "#e0f2fe",
   },
   messages: {
     paddingHorizontal: 12,
@@ -372,6 +682,33 @@ const styles = StyleSheet.create({
     fontSize: 12,
     textAlign: "center",
   },
+  attachPreview: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginHorizontal: 12,
+    marginBottom: 8,
+    padding: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#1e293b",
+    backgroundColor: "#020617",
+  },
+  attachThumb: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+  },
+  attachLabel: {
+    flex: 1,
+    fontSize: 12,
+    color: "#94a3b8",
+  },
+  clearAttach: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#f87171",
+  },
   composer: {
     flexDirection: "row",
     alignItems: "flex-end",
@@ -381,6 +718,22 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: "#111827",
   },
+  attachButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#1e293b",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#020617",
+  },
+  attachButtonText: {
+    color: "#e5e7eb",
+    fontSize: 20,
+    fontWeight: "600",
+    lineHeight: 22,
+  },
   input: {
     flex: 1,
     minHeight: 40,
@@ -388,6 +741,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderWidth: 1,
     borderColor: "#1e293b",
+    backgroundColor: "#020617",
     paddingHorizontal: 14,
     paddingVertical: 10,
     color: "#e5e7eb",
@@ -408,6 +762,19 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "600",
     color: "#020617",
+  },
+  stopButton: {
+    borderRadius: 999,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: "#7f1d1d",
+    minWidth: 72,
+    alignItems: "center",
+  },
+  stopLabel: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#fee2e2",
   },
   modalBackdrop: {
     flex: 1,

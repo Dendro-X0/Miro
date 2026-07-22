@@ -1,5 +1,6 @@
 export {
   MiroApiClient,
+  consumeUiMessageStream,
   createMiroApiClient,
   readUiMessageStreamText,
 } from "./api/miro-client";
@@ -50,3 +51,25 @@ export {
   parseStoredSettings,
   serializeSettings,
 } from "./settings";
+export {
+  MULTIPART_PREFIX,
+  deserializeMessageContent,
+  formatGeneratedImageContent,
+  getImageUrlFromMessageContent,
+  getTextFromStoredContent,
+  serializeMessageContent,
+  supportsVisionProvider,
+} from "./lib/message-parts";
+export type {
+  StoredImagePart,
+  StoredMessagePart,
+  StoredTextPart,
+} from "./lib/message-parts";
+export {
+  backupExportFilename,
+  decryptBackupPayload,
+  encryptBackupPayload,
+  parseEncryptedBackupJson,
+} from "./lib/backup-crypto";
+export { chatExportFilename, formatChatMarkdown } from "./lib/export-chat";
+export type { ChatMarkdownMessage } from "./lib/export-chat";

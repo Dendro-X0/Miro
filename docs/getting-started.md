@@ -95,7 +95,7 @@ Open **http://localhost:3100**.
 | Private daily driver | **Desktop** (`pnpm desktop:dev` / `desktop:release`) |
 | UI development / quick demo | **Web PWA** (`pnpm dev` → :3100) |
 | Headless / scripted API | **Lean `@miro/api`** — [`self-hosting.md`](./self-hosting.md) |
-| Phone client | **Not v1** — Expo scaffold only; deferred |
+| Phone client | **Native Expo** (next version) — [`mobile.md`](./mobile.md) |
 
 ## Next
 

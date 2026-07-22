@@ -157,26 +157,28 @@ Deferred — v1 uses cloud/API image generation. A future ComfyUI localhost brid
 
 ## Mobile (Expo)
 
-`miro-mobile` shares `@miro/core` with web. It is **not** the v1 privacy product (no encrypted vault), but covers BYOK + chat basics: SecureStore keys, AsyncStorage sessions, provider/model discovery, and a multi-chat list.
+Native Expo client — **next-version** track. Shares `@miro/core`; UI is React Native (not a WebView of `miro-web`). Not the privacy vault (SecureStore BYOK + AsyncStorage sessions).
+
+Full device URL notes: [`mobile.md`](./mobile.md).
 
 ```bash
 pnpm --filter @miro/api
 pnpm --filter miro-mobile start
 ```
 
-Create `apps/miro-mobile/.env`:
+Create `apps/miro-mobile/.env` (or set API URL in Settings):
 
 ```bash
-# Simulator / web
 EXPO_PUBLIC_MIRO_API_BASE_URL=http://localhost:8787
-
-# Android emulator → host machine
-# EXPO_PUBLIC_MIRO_API_BASE_URL=http://10.0.2.2:8787
+# Android emulator: http://10.0.2.2:8787
+# Physical device: http://<LAN-IP>:8787
 ```
 
-Still deferred vs web: streaming UI, gallery/images, vision attach, Markdown export, encrypted backup.
+**Shipped on mobile:** streaming chat + Stop, multi-chat sessions, BYOK, provider/model discovery, Chat/Image modes, gallery, vision attach, light markdown, Markdown export, passphrase-encrypted backup (interop with web/desktop).
 
-See [`architecture-modularity.md`](./architecture-modularity.md) for package boundaries and customization notes.
+**Still vs web:** regenerate/edit, pin/rename polish.
+
+See [`architecture-modularity.md`](./architecture-modularity.md) for package boundaries.
 
 ## Helpful scripts
 

@@ -60,6 +60,6 @@ Miro is a TypeScript-first monorepo optimized for a **small, modular BYOK AI cli
 |---------|-------|:-----:|
 | Web PWA | Next.js | Demo / dev |
 | Desktop | Tauri v2 + Rust | Primary product |
-| Mobile | Expo SDK 54 scaffold | 🚧 Deferred |
+| Mobile | Expo SDK 54 native client | 🚧 Next version |
 
 See [`ROADMAP.md`](../ROADMAP.md) for anti-goals and future tiers.

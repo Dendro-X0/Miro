@@ -14,6 +14,7 @@ export default function RootLayout(): ReactElement {
         }}
       >
         <Stack.Screen name="index" options={{ title: "Miro", headerShown: false }} />
+        <Stack.Screen name="gallery" options={{ title: "Gallery" }} />
         <Stack.Screen name="settings" options={{ title: "Settings" }} />
       </Stack>
     </MobileSettingsProvider>

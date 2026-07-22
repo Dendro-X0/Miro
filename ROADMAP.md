@@ -21,7 +21,7 @@ Miro is a **private, local-first BYOK AI studio** — a fast, encrypted client f
 
 - No multi-user, RBAC, or team SaaS
 - No RAG, agents, or plugin marketplace
-- No mobile app (defer; Expo only if v2+ and freelancing needs justify it)
+- No mobile privacy vault in v1 (Expo is next-version; desktop owns E2EE)
 - No video generation in v1
 - No rebuilding ComfyUI or Stable Diffusion — integrate via API only
 - No "Miro Pro" enterprise boilerplate in a separate repo (archived intent)
@@ -42,7 +42,7 @@ Shipped for the desktop-first v1 band:
 - ✅ Desktop: Tauri packaging + API sidecar (`pnpm desktop:dev` / `desktop:release`) — [`docs/desktop.md`](./docs/desktop.md)
 - ✅ Image generation: OpenAI-compatible + Google Imagen; Gallery; ComfyUI deferred
 - ✅ Anthropic text; vision attach; regenerate/edit; Markdown export; encrypted backup
-- 🚧 Mobile: Expo scaffold only (not a v1 product)
+- 🚧 Mobile: Expo native client in progress (next version target)
 
 ---
 
@@ -104,7 +104,7 @@ Shipped for the desktop-first v1 band:
 - [x] **Web PWA**
   - Documented as demo/dev surface; desktop carries the privacy story (README, overview, getting-started)
 - [x] **Competitive honesty**
-  - README “What Miro is not” table (not RAG, not multi-user SaaS, not mobile v1, not ComfyUI suite)
+  - README “What Miro is not” table (not RAG, not multi-user SaaS, not ComfyUI suite; mobile is next-version)
 
 ### Phase complete — v1 docs band
 
@@ -131,7 +131,7 @@ Only after the definition-of-done checklist is complete:
 Gated on v1 usage and maintenance cost (target: **< 2 hrs/month** to keep alive):
 
 - [ ] Video generation tab (async jobs, webhook-style providers — Runway, Fal, etc.)
-- [ ] Expo mobile client (shared types/API only; not Tauri mobile) — BYOK SecureStore + sessions + model discovery started
+- [x] Expo mobile client (native RN shell + `@miro/core`) — Milestones 1–3 (chat, gallery/vision, export/backup)
 - [ ] Optional zero-knowledge sync (encrypted backup export/import — basic passphrase backup shipped in v1.x)
 - [ ] Prompt template library
 - [ ] Plugin-style provider modules
@@ -158,7 +158,7 @@ miro-api (Hono)         — optional self-host; env-driven config for web demo
 |---------|:--:|-------|
 | Tauri desktop | ✅ | Primary product |
 | Web PWA | ✅ | Demo, dev, OSS discovery |
-| Mobile | ❌ | Defer; Tauri mobile immature; Expo if v2+ |
+| Mobile | 🚧 | Native Expo — next version target |
 
 ---
 
@@ -174,10 +174,16 @@ miro-api (Hono)         — optional self-host; env-driven config for web demo
 
 ## Current priority
 
-**0.2.0 cuts the scoped v1 band** (Phases 1–4 + Tier 1/2 polish listed above).
+**Next version focus: native Expo mobile** (`apps/miro-mobile`).
 
-Shipped: golden-path providers (incl. Anthropic), encrypted desktop vault, Tauri release packaging, API images + Gallery, model discovery, vision, backup, ship docs.
+Share `@miro/core` (API client, settings types) with web; rebuild the shell in React Native (not WebView). Desktop remains the privacy product.
 
-**Next (only if used weekly):** ComfyUI bridge, production PWA deploy notes, signed installers, or Node-free API sidecar.
+**Mobile milestones**
 
-*Mobile stays deferred. Everything else waits until maintenance cost stays under ~2 hrs/month.*
+1. Streaming chat + BYOK + sessions + model discovery + light markdown ✅
+2. Gallery / image gen, richer markdown, vision attach ✅
+3. Export / encrypted backup parity (Markdown share + `.mirobackup.json`) ✅
+
+Native Expo Milestones 1–3 are complete for the next-version band. Further polish (regenerate/edit, pin/rename) only if used weekly.
+
+**Also queued (only if used weekly):** ComfyUI bridge, production PWA deploy notes, signed installers, Node-free API sidecar.

@@ -9,6 +9,7 @@ export interface MobileAiSettings {
   readonly apiBaseUrl: string;
   readonly selectedProviderId: string;
   readonly selectedModelId: string;
+  readonly selectedImageModelId: string;
   readonly byokKey: string;
   readonly byokLabel: string;
 }
@@ -20,6 +21,7 @@ export function defaultMobileAiSettings(): MobileAiSettings {
     apiBaseUrl: resolveMiroApiBaseUrl(),
     selectedProviderId: "openai-compatible",
     selectedModelId: "gpt-4o-mini",
+    selectedImageModelId: "dall-e-3",
     byokKey: "",
     byokLabel: "",
   };
@@ -38,6 +40,7 @@ export async function loadMobileAiSettings(): Promise<MobileAiSettings> {
       apiBaseUrl: parsed.apiBaseUrl?.trim() || defaults.apiBaseUrl,
       selectedProviderId: parsed.selectedProviderId || defaults.selectedProviderId,
       selectedModelId: parsed.selectedModelId || defaults.selectedModelId,
+      selectedImageModelId: parsed.selectedImageModelId || defaults.selectedImageModelId,
       byokKey,
       byokLabel: parsed.byokLabel ?? "",
     };
@@ -59,6 +62,7 @@ export async function saveMobileAiSettings(settings: MobileAiSettings): Promise<
       apiBaseUrl: settings.apiBaseUrl,
       selectedProviderId: settings.selectedProviderId,
       selectedModelId: settings.selectedModelId,
+      selectedImageModelId: settings.selectedImageModelId,
       byokLabel: settings.byokLabel,
     }),
   );

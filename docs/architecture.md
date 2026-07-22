@@ -11,7 +11,7 @@ Miro is a pnpm monorepo built as a **private BYOK AI studio**: modular web UI, l
 | `apps/miro-web` | Next.js PWA — chat, settings, UI modules | ✅ Demo / primary UI |
 | `apps/miro-api` | Hono API (`@miro/api`) — chat, image, config, model list | ✅ Lean default |
 | `apps/miro-desktop` | Tauri v2 — keychain, vault, API sidecar, packaging | ✅ Primary product |
-| `apps/miro-mobile` | Expo Router — BYOK / sessions scaffold | 🚧 Not a v1 product |
+| `apps/miro-mobile` | Native Expo — streaming chat, BYOK, sessions | 🚧 Next version |
 | `packages/core` | Shared types + API client + settings | ✅ Web + mobile |
 | `packages/ai` | Provider adapters + `listModels` | ✅ Golden path + Anthropic |
 | `packages/auth` | Better Auth | Present; optional API experiment |
@@ -64,6 +64,6 @@ Miro is a pnpm monorepo built as a **private BYOK AI studio**: modular web UI, l
 - Multi-tenant server, RBAC, or team workspaces
 - RAG, document libraries, or agent/plugin marketplaces
 - Bundled ComfyUI, Python, or CUDA
-- Mobile as a product surface (Expo scaffold only)
+- Mobile privacy vault (Expo is next-version; SecureStore only, not E2EE)
 
 See [`ROADMAP.md`](../ROADMAP.md) for phased delivery and [`CHANGELOG.md`](../CHANGELOG.md) for 0.2.0.

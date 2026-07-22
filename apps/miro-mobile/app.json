@@ -2,7 +2,7 @@
   "expo": {
     "name": "Miro",
     "slug": "miro-mobile",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "scheme": "miro",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
@@ -10,7 +10,13 @@
     "jsEngine": "hermes",
     "plugins": [
       "expo-router",
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Miro to attach images for vision chat."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

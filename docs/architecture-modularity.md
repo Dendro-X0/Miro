@@ -25,7 +25,7 @@ apps/
 ├── miro-web/       Next.js PWA — primary UI today
 ├── miro-api/       Hono server — optional self-host / web demo backend
 ├── miro-desktop/   Tauri stub — v1 desktop target
-└── miro-mobile/    Expo Router scaffold — v2 / freelancing surface
+└── miro-mobile/    Native Expo client — next-version track
 ```
 
 ### `miro-web`
@@ -66,7 +66,7 @@ Experimental Tauri shell. v1 should own keychain + encrypted SQLite; web UI embe
 
 ### `miro-mobile`
 
-Expo Router scaffold (`app/` routes, `src/`). SecureStore BYOK, AsyncStorage sessions, and model discovery are present for experiments. **Not a v1 product surface** — desktop remains the shipping target.
+Native Expo Router client (`app/` routes, `src/`). Shares `@miro/core`; SecureStore BYOK, AsyncStorage sessions, streaming chat, model discovery. **Next-version track** — desktop remains the privacy product. See [`mobile.md`](./mobile.md).
 
 ---
 

@@ -1,4 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { getTextFromStoredContent } from "@miro/core";
 
 const STORE_KEY = "miro-mobile-chats-v1";
 
@@ -106,10 +107,8 @@ export async function saveMessage(
     content,
     createdAt: Date.now(),
   };
-  const titleFromUser =
-    role === "user" && content.trim()
-      ? content.trim().slice(0, 48)
-      : null;
+  const titleSource = role === "user" ? getTextFromStoredContent(content).trim() : "";
+  const titleFromUser = titleSource ? titleSource.slice(0, 48) : null;
   await writeStore({
     sessions: store.sessions.map((session) => {
       if (session.id !== sessionId) {
@@ -124,4 +123,18 @@ export async function saveMessage(
   return message;
 }
 
+/** Full store snapshot for backup export. */
+export async function readChatStore(): Promise<ChatStore> {
+  return readStore();
+}
+
+/** Replace all sessions/messages (destructive — used by backup import). */
+export async function replaceChatStore(store: ChatStore): Promise<void> {
+  await writeStore({
+    sessions: store.sessions,
+    messages: store.messages,
+  });
+}
+
 export { createId };
+export type { ChatStore };

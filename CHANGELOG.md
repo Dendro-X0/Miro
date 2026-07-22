@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Mobile (Native Expo)
+
+- Next-version target: native RN shell + `@miro/core` (not WebView)
+- Streaming chat via `MiroApiClient.streamChatText` with Stop
+- Chat / Image modes; gallery (AsyncStorage); vision attach (`expo-image-picker`)
+- Markdown export (share) + passphrase-encrypted `.mirobackup.json` (PBKDF2 / AES-GCM, shared with web)
+- Shared helpers in `@miro/core` (`miro:parts`, backup crypto, `formatChatMarkdown`)
+- Docs: [`docs/mobile.md`](./docs/mobile.md); ROADMAP Milestones 1–3 complete
+
 ### Planned
 
 - Optional signed / coffee-price desktop binaries

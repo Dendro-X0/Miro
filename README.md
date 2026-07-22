@@ -26,7 +26,7 @@ Be clear before you clone:
 | Open WebUI / LibreChat competitor | No RAG, agents, tool hubs, or multi-user SaaS in v1 |
 | Multi-tenant AI platform | Single-user client; Postgres/auth is optional experiment only |
 | ComfyUI / Stable Diffusion suite | Image via cloud APIs in v1; ComfyUI bridge deferred |
-| Mobile product in v1 | Expo scaffold exists for experiments; **desktop** is the product |
+| Mobile product in v1 | Expo is the **next-version** track; **desktop** owns the privacy vault |
 | Hosted “Miro cloud” | You run it locally; optional self-host of lean `@miro/api` |
 
 ---
@@ -74,7 +74,7 @@ OpenAI-compatible, Anthropic, Google, or Ollama examples: [`docs/getting-started
   - `apps/miro-desktop` — Tauri v2 (primary product)
   - `apps/miro-web` — Next.js PWA (demo / UI development)
   - `apps/miro-api` — lean Hono API (`@miro/api`) for chat, image, model list
-  - `apps/miro-mobile` — Expo scaffold (not v1 product; deferred)
+  - `apps/miro-mobile` — Native Expo client (next version; shares `@miro/core`)
 - **Packages** — `@miro/core`, `@miro/ai`, `@miro/ui` (+ optional `@miro/db` / `@miro/auth`)
 
 ```
@@ -95,6 +95,7 @@ miro-api (Hono)      →  lean local AI HTTP (optional self-host)
 | [`docs/getting-started.md`](./docs/getting-started.md) | Install → key → first chat |
 | [`docs/usage.md`](./docs/usage.md) | Env vars, providers, discovery, scripts |
 | [`docs/desktop.md`](./docs/desktop.md) | Tauri packaging, release checklist, signing |
+| [`docs/mobile.md`](./docs/mobile.md) | Native Expo client (next version) |
 | [`docs/self-hosting.md`](./docs/self-hosting.md) | Lean `@miro/api` self-host |
 | [`docs/overview.md`](./docs/overview.md) | Product overview & extension |
 | [`docs/architecture.md`](./docs/architecture.md) | Apps, packages, and data flow |
@@ -111,7 +112,7 @@ miro-api (Hono)      →  lean local AI HTTP (optional self-host)
 | Tauri desktop | ✅ Primary product (vault, keychain, packaging) |
 | Web PWA (`miro-web`) | ✅ Demo / dev — not the privacy story |
 | AI API (`@miro/api`) | ✅ Lean BYOK self-host + model discovery |
-| Mobile (`miro-mobile`) | 🚧 Expo scaffold only — not a v1 product |
+| Mobile (`miro-mobile`) | 🚧 Native Expo — next version (not the privacy vault) |
 
 Full roadmap: [`ROADMAP.md`](./ROADMAP.md).
 

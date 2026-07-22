@@ -78,7 +78,7 @@ Unsigned / release desktop apps do **not** auto-spawn the Node API. Run lean `@m
 
 - No RAG index, agent runtime, or multi-tenant billing in lean mode
 - No bundled ComfyUI / CUDA stacks
-- Mobile (`miro-mobile`) is an Expo scaffold — not a self-host target for v1
+- Mobile (`miro-mobile`) talks to the same lean API over LAN; see [`mobile.md`](./mobile.md)
 
 ## Related
 

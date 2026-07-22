@@ -11,6 +11,7 @@ Miro is a **private, local-first BYOK AI studio** — a modular client for text 
 | [Getting started](./getting-started.md) | Golden path |
 | [Usage](./usage.md) | Env, providers, model discovery, scripts |
 | [Desktop](./desktop.md) | Tauri packaging & release checklist |
+| [Mobile](./mobile.md) | Native Expo client (next version) |
 | [Self-hosting](./self-hosting.md) | Lean `@miro/api` |
 | [Stack](./stack.md) | Libraries |
 | [Architecture](./architecture.md) | Apps & data flow |
@@ -23,7 +24,7 @@ Miro is a **private, local-first BYOK AI studio** — a modular client for text 
 | **Desktop** (`miro-desktop`) | Primary product — encrypted vault, keychain, API sidecar |
 | **Web PWA** (`miro-web`) | Demo and UI development — not E2EE |
 | **API** (`@miro/api`) | Lean local AI HTTP; chat, image, model list; optional self-host |
-| **Mobile** (`miro-mobile`) | Expo scaffold only — not a v1 product (deferred) |
+| **Mobile** (`miro-mobile`) | Native Expo — next version target (SecureStore BYOK; not E2EE vault) |
 
 ## What Miro is not
 

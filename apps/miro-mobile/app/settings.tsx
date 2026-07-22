@@ -2,6 +2,7 @@ import type { ReactElement } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -13,6 +14,10 @@ import {
 import { createMiroApiClient, type AiDiscoveredModel } from "@miro/core";
 import { tokens } from "@miro/ui";
 import { useMobileSettings } from "../src/settings-context";
+import {
+  pickAndImportEncryptedBackup,
+  shareEncryptedBackup,
+} from "../src/lib/share-export";
 
 export default function SettingsScreen(): ReactElement {
   const { settings, ready, updateSettings } = useMobileSettings();
@@ -20,9 +25,14 @@ export default function SettingsScreen(): ReactElement {
   const [draftBaseUrl, setDraftBaseUrl] = useState("");
   const [draftLabel, setDraftLabel] = useState("");
   const [models, setModels] = useState<readonly AiDiscoveredModel[]>([]);
+  const [imageModels, setImageModels] = useState<readonly AiDiscoveredModel[]>([]);
   const [providers, setProviders] = useState<readonly { id: string; label: string }[]>([]);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+  const [exportPassphrase, setExportPassphrase] = useState("");
+  const [importPassphrase, setImportPassphrase] = useState("");
+  const [backupBusy, setBackupBusy] = useState(false);
+  const [backupStatus, setBackupStatus] = useState<string | null>(null);
 
   useEffect(() => {
     if (!ready) {
@@ -54,18 +64,23 @@ export default function SettingsScreen(): ReactElement {
         baseUrl: settings.apiBaseUrl || undefined,
       });
       const textModels = listed.models.filter((model) => model.kind !== "image");
+      const nextImageModels = listed.models.filter((model) => model.kind === "image");
       setModels(textModels);
+      setImageModels(nextImageModels);
       if (listed.error) {
         setStatus(listed.error);
-      } else if (textModels.length === 0) {
+      } else if (textModels.length === 0 && nextImageModels.length === 0) {
         setStatus("No models discovered — enter a model ID manually or check your key.");
       } else {
-        setStatus(`Loaded ${textModels.length} models.`);
+        setStatus(
+          `Loaded ${textModels.length} text · ${nextImageModels.length} image models.`,
+        );
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to load models";
       setStatus(message);
       setModels([]);
+      setImageModels([]);
     } finally {
       setBusy(false);
     }
@@ -85,6 +100,54 @@ export default function SettingsScreen(): ReactElement {
       byokLabel: draftLabel.trim(),
     });
     setStatus("Saved. Keys stay in SecureStore on this device.");
+  }
+
+  async function handleExportBackup(): Promise<void> {
+    setBackupBusy(true);
+    setBackupStatus(null);
+    try {
+      const filename = await shareEncryptedBackup(exportPassphrase);
+      setBackupStatus(`Shared ${filename}. Keys are not included.`);
+      setExportPassphrase("");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Backup export failed";
+      setBackupStatus(message);
+    } finally {
+      setBackupBusy(false);
+    }
+  }
+
+  function handleImportBackup(): void {
+    Alert.alert(
+      "Replace local data?",
+      "Import replaces all chats and gallery items on this device. Settings and BYOK keys are not changed.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Import",
+          style: "destructive",
+          onPress: () => {
+            void (async () => {
+              setBackupBusy(true);
+              setBackupStatus(null);
+              try {
+                await pickAndImportEncryptedBackup(importPassphrase);
+                setBackupStatus("Backup imported. Open Chats to see restored sessions.");
+                setImportPassphrase("");
+              } catch (error) {
+                const message =
+                  error instanceof Error ? error.message : "Backup import failed";
+                if (message !== "Import cancelled") {
+                  setBackupStatus(message);
+                }
+              } finally {
+                setBackupBusy(false);
+              }
+            })();
+          },
+        },
+      ],
+    );
   }
 
   if (!ready) {
@@ -172,7 +235,7 @@ export default function SettingsScreen(): ReactElement {
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.label}>Model</Text>
+          <Text style={styles.label}>Text model</Text>
           <TextInput
             style={styles.input}
             value={settings.selectedModelId}
@@ -187,7 +250,7 @@ export default function SettingsScreen(): ReactElement {
               const active = model.id === settings.selectedModelId;
               return (
                 <Pressable
-                  key={model.id}
+                  key={`text-${model.id}`}
                   style={[styles.chip, active ? styles.chipActive : null]}
                   onPress={() => void updateSettings({ selectedModelId: model.id })}
                 >
@@ -198,7 +261,84 @@ export default function SettingsScreen(): ReactElement {
               );
             })}
           </View>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.label}>Image model</Text>
+          <TextInput
+            style={styles.input}
+            value={settings.selectedImageModelId}
+            onChangeText={(value) => void updateSettings({ selectedImageModelId: value })}
+            autoCapitalize="none"
+            autoCorrect={false}
+            placeholder="dall-e-3"
+            placeholderTextColor="#64748b"
+          />
+          <View style={styles.chipRow}>
+            {imageModels.slice(0, 24).map((model) => {
+              const active = model.id === settings.selectedImageModelId;
+              return (
+                <Pressable
+                  key={`image-${model.id}`}
+                  style={[styles.chip, active ? styles.chipActive : null]}
+                  onPress={() => void updateSettings({ selectedImageModelId: model.id })}
+                >
+                  <Text style={[styles.chipText, active ? styles.chipTextActive : null]}>
+                    {model.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
           {status ? <Text style={styles.status}>{status}</Text> : null}
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.label}>Data & backup</Text>
+          <Text style={styles.hint}>
+            Passphrase-encrypted `.mirobackup.json` — same format as web/desktop (PBKDF2 +
+            AES-GCM). Chats + gallery only; BYOK stays in SecureStore.
+          </Text>
+          <Text style={[styles.subLabel, styles.mt8]}>Export passphrase (min 8)</Text>
+          <TextInput
+            style={styles.input}
+            value={exportPassphrase}
+            onChangeText={setExportPassphrase}
+            secureTextEntry
+            autoCapitalize="none"
+            autoCorrect={false}
+            placeholder="••••••••"
+            placeholderTextColor="#64748b"
+          />
+          <Pressable
+            style={[styles.primaryButton, backupBusy ? styles.buttonDisabled : null]}
+            onPress={() => void handleExportBackup()}
+            disabled={backupBusy}
+          >
+            <Text style={styles.primaryButtonText}>
+              {backupBusy ? "Working…" : "Export encrypted backup"}
+            </Text>
+          </Pressable>
+
+          <Text style={[styles.subLabel, styles.mt8]}>Import passphrase</Text>
+          <TextInput
+            style={styles.input}
+            value={importPassphrase}
+            onChangeText={setImportPassphrase}
+            secureTextEntry
+            autoCapitalize="none"
+            autoCorrect={false}
+            placeholder="••••••••"
+            placeholderTextColor="#64748b"
+          />
+          <Pressable
+            style={[styles.secondaryButton, backupBusy ? styles.buttonDisabled : null]}
+            onPress={handleImportBackup}
+            disabled={backupBusy}
+          >
+            <Text style={styles.secondaryButtonText}>Import backup file…</Text>
+          </Pressable>
+          {backupStatus ? <Text style={styles.status}>{backupStatus}</Text> : null}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -258,6 +398,29 @@ const styles = StyleSheet.create({
     color: "#020617",
     fontWeight: "600",
     fontSize: 13,
+  },
+  secondaryButton: {
+    marginTop: 8,
+    alignSelf: "flex-start",
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#1e293b",
+    backgroundColor: "#020617",
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  secondaryButtonText: {
+    color: "#e5e7eb",
+    fontWeight: "600",
+    fontSize: 13,
+  },
+  buttonDisabled: {
+    opacity: 0.5,
+  },
+  subLabel: {
+    fontSize: 12,
+    color: "#94a3b8",
+    fontWeight: "600",
   },
   rowBetween: {
     flexDirection: "row",

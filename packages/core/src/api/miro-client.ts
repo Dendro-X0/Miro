@@ -67,36 +67,110 @@ export async function readUiMessageStreamText(response: Response): Promise<strin
   if (!raw) {
     return "";
   }
+  return extractTextFromUiMessageStream(raw);
+}
 
-  const deltas: string[] = [];
-
-  for (const line of raw.split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed) {
-      continue;
+function extractDeltaFromStreamLine(line: string): string | null {
+  const trimmed = line.trim();
+  if (!trimmed) {
+    return null;
+  }
+  if (!trimmed.startsWith("0:")) {
+    return null;
+  }
+  try {
+    const payload = JSON.parse(trimmed.slice(2)) as string | { type?: string; textDelta?: string; delta?: string };
+    if (typeof payload === "string") {
+      return payload;
     }
+    if (payload.type === "text-delta" && typeof payload.textDelta === "string") {
+      return payload.textDelta;
+    }
+    if (typeof payload.textDelta === "string") {
+      return payload.textDelta;
+    }
+    if (typeof payload.delta === "string") {
+      return payload.delta;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
 
-    if (trimmed.startsWith("0:")) {
-      try {
-        const payload = JSON.parse(trimmed.slice(2)) as string | { type?: string; textDelta?: string };
-        if (typeof payload === "string") {
-          deltas.push(payload);
-          continue;
-        }
-        if (payload.type === "text-delta" && typeof payload.textDelta === "string") {
-          deltas.push(payload.textDelta);
-        }
-      } catch {
-        // Fall through to plain-text heuristics below.
-      }
+function extractTextFromUiMessageStream(raw: string): string {
+  const deltas: string[] = [];
+  for (const line of raw.split("\n")) {
+    const delta = extractDeltaFromStreamLine(line);
+    if (delta) {
+      deltas.push(delta);
     }
   }
-
   if (deltas.length > 0) {
     return deltas.join("").trim();
   }
-
   return raw.trim();
+}
+
+/**
+ * Consume an AI SDK UI message stream, invoking `onDelta` as text arrives.
+ * Falls back to buffering the full body when `ReadableStream` is unavailable (some RN runtimes).
+ */
+export async function consumeUiMessageStream(
+  response: Response,
+  onDelta?: (delta: string, assembled: string) => void,
+): Promise<string> {
+  const body = response.body;
+  const canStream =
+    body !== null &&
+    typeof (body as ReadableStream<Uint8Array>).getReader === "function";
+
+  if (!canStream) {
+    const full = await readUiMessageStreamText(response);
+    if (full && onDelta) {
+      onDelta(full, full);
+    }
+    return full;
+  }
+
+  const reader = (body as ReadableStream<Uint8Array>).getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let assembled = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+    for (const line of lines) {
+      const delta = extractDeltaFromStreamLine(line);
+      if (!delta) {
+        continue;
+      }
+      assembled += delta;
+      onDelta?.(delta, assembled);
+    }
+  }
+
+  buffer += decoder.decode();
+  if (buffer.trim()) {
+    const delta = extractDeltaFromStreamLine(buffer);
+    if (delta) {
+      assembled += delta;
+      onDelta?.(delta, assembled);
+    }
+  }
+
+  if (assembled.trim().length > 0) {
+    return assembled.trim();
+  }
+
+  // Fallback: some gateways may not use the `0:` protocol.
+  return assembled.trim();
 }
 
 export class MiroApiClient {
@@ -166,6 +240,14 @@ export class MiroApiClient {
   async completeChat(options: StreamChatOptions): Promise<string> {
     const response = await this.streamChat(options);
     return readUiMessageStreamText(response);
+  }
+
+  async streamChatText(
+    options: StreamChatOptions,
+    onDelta?: (delta: string, assembled: string) => void,
+  ): Promise<string> {
+    const response = await this.streamChat(options);
+    return consumeUiMessageStream(response, onDelta);
   }
 
   async generateImage(params: GenerateImageParams): Promise<GenerateImageResult> {
