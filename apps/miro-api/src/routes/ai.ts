@@ -1,15 +1,19 @@
-import { streamText } from "ai";
+import { streamText, stepCountIs } from "ai";
 import type { AiImageClient } from "@miro/ai";
 import {
   createAiImageClient,
   createMockAiImageClient,
   createModel,
+  createWebSearchTool,
   listModels,
   normalizeProviderId,
+  providerSupportsTranscription,
+  transcribeAudio,
   type ModelConfig,
 } from "@miro/ai";
 
 import type { ApiConfig, AiConfig, AiRuntimeProvider } from "../config";
+import { buildAgentSystemPrompt } from "../agent-prompt";
 import { buildModelCacheKey, getCachedModels, setCachedModels } from "../model-cache";
 import type { AppContext, AppInstance } from "../types";
 import {
@@ -36,6 +40,9 @@ interface ChatRequestBody {
   readonly byokKey?: string;
   readonly baseUrl?: string;
   readonly systemPrompt?: string;
+  readonly enableWebSearch?: boolean;
+  readonly enableMemory?: boolean;
+  readonly memories?: readonly { readonly content: string }[];
 }
 
 interface ImageRequestBody {
@@ -203,7 +210,14 @@ async function handleChat(context: AppContext, apiConfig: ApiConfig): Promise<Re
   }
 
   const config = resolveModelConfig(apiConfig, body);
-  const systemPrompt = body.systemPrompt?.trim();
+  const systemPrompt = buildAgentSystemPrompt({
+    basePrompt: body.systemPrompt,
+    memories: body.memories,
+    enableMemory: body.enableMemory,
+    enableWebSearch: body.enableWebSearch,
+  });
+  const provider = normalizeProviderId(config.provider);
+  const useWebSearch = body.enableWebSearch !== false && provider !== "mock";
 
   try {
     const model = createModel(config);
@@ -213,6 +227,12 @@ async function handleChat(context: AppContext, apiConfig: ApiConfig): Promise<Re
       model,
       messages: coreMessages as never,
       ...(systemPrompt ? { system: systemPrompt } : {}),
+      ...(useWebSearch
+        ? {
+            tools: { web_search: createWebSearchTool() },
+            stopWhen: stepCountIs(4),
+          }
+        : {}),
     });
 
     return result.toUIMessageStreamResponse();
@@ -303,6 +323,78 @@ async function handleModels(context: AppContext, apiConfig: ApiConfig): Promise<
   }
 }
 
+async function handleTranscribe(context: AppContext, apiConfig: ApiConfig): Promise<Response> {
+  let form: FormData;
+  try {
+    form = await context.req.formData();
+  } catch {
+    return context.json({ error: "Expected multipart form data with an audio file." }, 400);
+  }
+
+  const fileEntry = form.get("file");
+  const isBlobLike =
+    fileEntry !== null &&
+    typeof fileEntry === "object" &&
+    "arrayBuffer" in fileEntry &&
+    "size" in fileEntry &&
+    typeof (fileEntry as Blob).size === "number";
+  if (!isBlobLike) {
+    return context.json({ error: "file is required" }, 400);
+  }
+  const file = fileEntry as Blob;
+  if (file.size === 0) {
+    return context.json({ error: "Audio file is empty." }, 400);
+  }
+  if (file.size > 25 * 1024 * 1024) {
+    return context.json({ error: "Audio file is too large (max 25MB)." }, 400);
+  }
+
+  const providerField = String(form.get("provider") ?? "").trim();
+  const byokKey = String(form.get("byokKey") ?? "").trim();
+  const baseUrl = String(form.get("baseUrl") ?? "").trim();
+  const language = String(form.get("language") ?? "").trim();
+  const model = String(form.get("model") ?? "").trim();
+  const filename =
+    typeof File !== "undefined" &&
+    fileEntry instanceof File &&
+    fileEntry.name.trim().length > 0
+      ? fileEntry.name
+      : "recording.webm";
+
+  const credentials = resolveProviderCredentials(apiConfig, {
+    provider: providerField || undefined,
+    byokKey: byokKey || undefined,
+    baseUrl: baseUrl || undefined,
+  });
+
+  if (!providerSupportsTranscription(credentials.provider)) {
+    return context.json(
+      {
+        error:
+          "Voice transcription needs OpenAI, Custom (OpenAI-compatible), or Local with Whisper. Switch source in Settings → AI & keys.",
+      },
+      400,
+    );
+  }
+
+  try {
+    const text = await transcribeAudio({
+      provider: credentials.provider,
+      apiKey: credentials.apiKey,
+      baseUrl: credentials.baseUrl,
+      file,
+      filename,
+      language: language || undefined,
+      model: model || undefined,
+    });
+    return context.json({ text, provider: credentials.provider });
+  } catch (error) {
+    console.error("Transcribe error:", error);
+    const message = error instanceof Error ? error.message : "Failed to transcribe audio";
+    return context.json({ error: message }, 500);
+  }
+}
+
 export function registerAiRoutes(deps: AiRouteDeps): void {
   const { app, apiConfig } = deps;
 
@@ -323,5 +415,6 @@ export function registerAiRoutes(deps: AiRouteDeps): void {
 
   app.post("/api/chat", async (context: AppContext) => handleChat(context, apiConfig));
   app.post("/ai/models", async (context: AppContext) => handleModels(context, apiConfig));
+  app.post("/ai/transcribe", async (context: AppContext) => handleTranscribe(context, apiConfig));
   app.post("/v2/ai/image", async (context: AppContext) => handleImage(context, apiConfig));
 }

@@ -71,14 +71,30 @@ export function useAiModelCatalog(aiView: AiViewSettings): UseAiModelCatalogResu
       return;
     }
 
+    const runtimeProvider = findProviderRuntime(runtime, selectedProviderId);
+    const resolvedBaseUrl =
+      selectedProviderId === "openai-compatible"
+        ? byokBaseUrl.trim() || undefined
+        : byokBaseUrl.trim() || runtimeProvider.baseUrl || undefined;
+
+    // Custom gateways must set an explicit base URL — do not fall back to the server OpenAI URL.
+    if (selectedProviderId === "openai-compatible" && !resolvedBaseUrl) {
+      setDiscoveredByProvider((previous) => {
+        const next = { ...previous };
+        delete next[selectedProviderId];
+        return next;
+      });
+      setDiscoveryError(null);
+      return;
+    }
+
     setLoading(true);
     setDiscoveryError(null);
     try {
-      const runtimeProvider = findProviderRuntime(runtime, selectedProviderId);
       const response = await miroApi.listModels({
         provider: selectedProviderId,
         byokKey: byokKey.trim() || undefined,
-        baseUrl: byokBaseUrl.trim() || runtimeProvider.baseUrl || undefined,
+        baseUrl: resolvedBaseUrl,
       });
       setDiscoveredByProvider((previous) => ({
         ...previous,

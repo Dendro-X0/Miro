@@ -16,11 +16,13 @@ import ModelSwitcher from "./shell/model-switcher";
 import ChatInputBar from "./shell/chat-input";
 import SampleMessages from "./shell/sample-messages";
 import GalleryView from "./shell/gallery-view";
-import PlaceholderView from "./shell/placeholder-view";
+import ActivityView from "./shell/activity-view";
 import ChatInstructionsPanel from "./shell/chat-instructions-panel";
 import ChatMessageBubble from "./shell/chat-message-bubble";
 import AssistantModeRow from "./modules/ui/components/chat/assistant-mode-row";
+import AgentCapabilitiesRow from "./modules/ui/components/chat/agent-capabilities-row";
 import ChatErrorBanner from "./modules/ui/components/chat/chat-error-banner";
+import DesktopTitlebar from "./shell/desktop-titlebar";
 import { miroApi, getChatEndpoint } from "./lib/miro-api";
 import {
   createChatSession,
@@ -40,7 +42,6 @@ import {
 import { chatExportFilename, downloadMarkdownFile, formatChatMarkdown } from "./lib/export-chat";
 import {
   deleteGalleryAsset,
-  isEncryptedGallery,
   listGalleryAssets,
   saveGalleryAsset,
   type GalleryAsset,
@@ -53,7 +54,12 @@ import {
   supportsVisionProvider,
   type StoredMessagePart,
 } from "./lib/message-parts";
-import { formatGeneratedImageContent } from "@miro/core";
+import {
+  createMemoryEntry,
+  dedupeMemories,
+  extractMemoryFromAssistantText,
+  formatGeneratedImageContent,
+} from "@miro/core";
 import type { ChatImageAttachmentInput } from "./shell/types";
 import { useAiModelCatalog } from "./lib/use-ai-model-catalog";
 import { providerHasCredentials } from "./lib/ai-model-catalog";
@@ -86,6 +92,24 @@ export default function AppShell(props: AppShellProps): ReactElement {
   const [sessionInstructions, setSessionInstructions] = useState<string>("");
   const [showInstructionsPanel, setShowInstructionsPanel] = useState<boolean>(false);
   const { settings, updateSettings, resetSettings } = useSettings();
+  const [isDesktopVault, setIsDesktopVault] = useState(false);
+
+  useEffect(() => {
+    // Defer Tauri detection until after hydration (SSR always sees window=undefined).
+    setIsDesktopVault(isEncryptedChatHistory());
+  }, []);
+
+  useEffect(() => {
+    const preference = settings.appearance.theme;
+    const systemDark =
+      typeof window !== "undefined" &&
+      window.matchMedia("(prefers-color-scheme: dark)").matches;
+    const useDark = preference === "dark" || (preference === "system" && systemDark);
+    document.documentElement.classList.toggle("dark", useDark);
+    if (preference === "light" || preference === "dark") {
+      window.localStorage.setItem("miro-theme", preference);
+    }
+  }, [settings.appearance.theme]);
 
   const modelId: string = settings.aiView.selectedModelId || defaultModelId;
   const imageModelId: string = settings.aiView.selectedImageModelId;
@@ -93,6 +117,7 @@ export default function AppShell(props: AppShellProps): ReactElement {
   const byokBaseUrl: string = settings.aiView.byokBaseUrl ?? "";
   const selectedProviderId: string = settings.aiView.selectedProviderId || "google";
   const defaultSystemPrompt: string = settings.aiView.defaultSystemPrompt ?? "";
+  const agentSettings = settings.agent;
   const { switcherOptions, loading: catalogLoading, runtime: aiRuntime } = useAiModelCatalog(
     settings.aiView,
   );
@@ -103,15 +128,18 @@ export default function AppShell(props: AppShellProps): ReactElement {
     settings.aiView.byokProvider,
   );
   const persistHistory: boolean =
-    isEncryptedChatHistory() || settings.data.storeConversationHistory;
+    isDesktopVault || settings.data.storeConversationHistory;
 
-  const [sessions, setSessions] = useState<readonly SidebarChatSummary[]>([]);
+  const [sessionSummaries, setSessionSummaries] = useState<readonly ChatSessionSummary[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string>("");
   const [galleryAssets, setGalleryAssets] = useState<readonly GalleryAsset[]>([]);
   const [imageBusy, setImageBusy] = useState<boolean>(false);
   const [imageError, setImageError] = useState<string | null>(null);
+  const [composeSeed, setComposeSeed] = useState<string>("");
+  const [composeSeedKey, setComposeSeedKey] = useState<number>(0);
   const activeSessionIdRef = useRef<string>("");
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const sessions = toSidebarChats(sessionSummaries);
 
   function setActiveSession(sessionId: string): void {
     activeSessionIdRef.current = sessionId;
@@ -123,9 +151,17 @@ export default function AppShell(props: AppShellProps): ReactElement {
   }
 
   async function refreshSessions(): Promise<readonly SidebarChatSummary[]> {
-    const next = toSidebarChats(await listChatSessions());
-    setSessions(next);
-    return next;
+    const next = await listChatSessions();
+    setSessionSummaries(next);
+    return toSidebarChats(next);
+  }
+
+  function seedComposer(text: string, mode: AssistantMode = "image"): void {
+    setAssistantMode(mode);
+    setView("today");
+    setComposeSeed(text);
+    setComposeSeedKey(Date.now());
+    setMobileSidebarOpen(false);
   }
 
   async function maybeAutoTitle(sessionId: string, prompt: string): Promise<void> {
@@ -174,8 +210,20 @@ export default function AppShell(props: AppShellProps): ReactElement {
       byokKey: byokKey || undefined,
       baseUrl: byokBaseUrl.trim() || undefined,
       systemPrompt: combinedSystemPrompt || undefined,
+      enableWebSearch: agentSettings.enableWebSearch,
+      enableMemory: agentSettings.enableMemory,
+      memories: agentSettings.enableMemory ? agentSettings.memories : [],
     }),
-    [modelId, selectedProviderId, byokKey, byokBaseUrl, combinedSystemPrompt],
+    [
+      modelId,
+      selectedProviderId,
+      byokKey,
+      byokBaseUrl,
+      combinedSystemPrompt,
+      agentSettings.enableWebSearch,
+      agentSettings.enableMemory,
+      agentSettings.memories,
+    ],
   );
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -183,11 +231,24 @@ export default function AppShell(props: AppShellProps): ReactElement {
     api: getChatEndpoint(),
     body: chatBody,
     onFinish: (message: UIMessage) => {
-      void persistMessage(
-        message.role,
-        serializeMessageContent(getUiMessageParts(message)),
-        message.id,
-      );
+      const parts = getUiMessageParts(message);
+      const assistantText = parts
+        .filter((part): part is StoredMessagePart & { type: "text" } => part.type === "text")
+        .map((part) => part.text)
+        .join("\n");
+      const { cleanedText, memory } = extractMemoryFromAssistantText(assistantText);
+      if (memory && agentSettings.enableMemory) {
+        updateSettings({
+          agent: {
+            memories: dedupeMemories(agentSettings.memories, createMemoryEntry(memory)),
+          },
+        });
+      }
+      const contentParts =
+        memory && cleanedText !== assistantText
+          ? ([{ type: "text", text: cleanedText }] as const)
+          : parts;
+      void persistMessage(message.role, serializeMessageContent(contentParts), message.id);
     },
     onError: (err: unknown) => {
       console.error("Chat error:", err);
@@ -195,29 +256,54 @@ export default function AppShell(props: AppShellProps): ReactElement {
   } as any) as any;
 
   useEffect(() => {
+    let cancelled = false;
     void (async () => {
-      if (!persistHistory) {
-        setSessions([]);
-        setActiveSession("");
+      try {
+        if (!persistHistory) {
+          if (cancelled) {
+            return;
+          }
+          setSessionSummaries([]);
+          setActiveSession("");
+          setMessages([]);
+          setHistoryReady(true);
+          return;
+        }
+        const existing = await refreshSessions();
+        if (cancelled) {
+          return;
+        }
+        if (existing.length > 0) {
+          await loadSession(existing[0].id);
+          if (!cancelled) {
+            setHistoryReady(true);
+          }
+          return;
+        }
+        const created = await createChatSession("New chat");
+        if (cancelled) {
+          return;
+        }
+        setSessionSummaries([created]);
+        setActiveSession(created.id);
         setMessages([]);
         setHistoryReady(true);
-        return;
+      } catch (error) {
+        console.error("Failed to load chat history:", error);
+        if (!cancelled) {
+          setSessionSummaries([]);
+          setActiveSession("");
+          setMessages([]);
+          setHistoryReady(true);
+        }
       }
-      const existing = await refreshSessions();
-      if (existing.length > 0) {
-        await loadSession(existing[0].id);
-        setHistoryReady(true);
-        return;
-      }
-      const created = await createChatSession("New chat");
-      setSessions([{ id: created.id, title: created.title, pinned: created.pinned }]);
-      setActiveSession(created.id);
-      setMessages([]);
-      setHistoryReady(true);
     })();
-    // Intentionally run when persistence preference changes.
+    return () => {
+      cancelled = true;
+    };
+    // Persist preference only — do not depend on setMessages (unstable under useChat).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [persistHistory, setMessages]);
+  }, [persistHistory]);
 
   useEffect(() => {
     void refreshGallery();
@@ -254,10 +340,7 @@ export default function AppShell(props: AppShellProps): ReactElement {
       return;
     }
     const created = await createChatSession("New chat");
-    setSessions((previous) => [
-      { id: created.id, title: created.title, pinned: created.pinned },
-      ...previous,
-    ]);
+    setSessionSummaries((previous) => [created, ...previous]);
     setActiveSession(created.id);
     setMessages([]);
     setSessionInstructions("");
@@ -295,9 +378,15 @@ export default function AppShell(props: AppShellProps): ReactElement {
       return;
     }
     const updated = await renameChatSession(chatId, title);
-    setSessions((previous) =>
+    setSessionSummaries((previous) =>
       previous.map((session) =>
-        session.id === chatId ? { ...session, title: updated.title } : session,
+        session.id === chatId
+          ? {
+              ...session,
+              title: updated.title,
+              updatedAt: updated.updatedAt,
+            }
+          : session,
       ),
     );
   }
@@ -321,10 +410,7 @@ export default function AppShell(props: AppShellProps): ReactElement {
     }
     if (persistHistory && !activeSessionIdRef.current) {
       const created = await createChatSession("New chat");
-      setSessions((previous) => [
-        { id: created.id, title: created.title, pinned: created.pinned },
-        ...previous,
-      ]);
+      setSessionSummaries((previous) => [created, ...previous]);
       setActiveSession(created.id);
     }
     const parts: StoredMessagePart[] = [{ type: "text", text: trimmed }];
@@ -344,10 +430,7 @@ export default function AppShell(props: AppShellProps): ReactElement {
     const prompt = input.prompt.trim() || "What's in this image?";
     if (persistHistory && !activeSessionIdRef.current) {
       const created = await createChatSession("New chat");
-      setSessions((previous) => [
-        { id: created.id, title: created.title, pinned: created.pinned },
-        ...previous,
-      ]);
+      setSessionSummaries((previous) => [created, ...previous]);
       setActiveSession(created.id);
     }
     const parts: StoredMessagePart[] = [
@@ -436,10 +519,7 @@ export default function AppShell(props: AppShellProps): ReactElement {
 
     if (persistHistory && !activeSessionIdRef.current) {
       const created = await createChatSession("New chat");
-      setSessions((previous) => [
-        { id: created.id, title: created.title, pinned: created.pinned },
-        ...previous,
-      ]);
+      setSessionSummaries((previous) => [created, ...previous]);
       setActiveSession(created.id);
     }
 
@@ -498,7 +578,7 @@ export default function AppShell(props: AppShellProps): ReactElement {
     await refreshGallery();
   }
 
-  const historyHint = isEncryptedChatHistory()
+  const historyHint = isDesktopVault
     ? "Encrypted on this device"
     : persistHistory
       ? "Saved in this browser"
@@ -519,17 +599,18 @@ export default function AppShell(props: AppShellProps): ReactElement {
       onTogglePinChat={(chatId) => void handleTogglePinChat(chatId)}
       onRenameChat={(chatId, title) => void handleRenameChat(chatId, title)}
       onDeleteChat={(chatId) => void handleDeleteChat(chatId)}
+      galleryCount={galleryAssets.length}
+      historyHint={historyHint}
+      providerReady={providerReady}
     />
   );
 
   return (
-    <div className="miro-gradient-shell min-h-screen text-foreground">
-      <div className="flex min-h-screen w-full max-w-full gap-0 px-0 py-0 md:gap-4 md:px-4 md:py-4 lg:px-6 xl:px-10">
-        <aside className="hidden w-64 flex-col rounded-none surface-panel-muted p-4 backdrop-blur md:rounded-3xl lg:flex">
+    <div className="miro-gradient-shell flex h-dvh max-h-dvh flex-col overflow-hidden text-foreground">
+      <DesktopTitlebar />
+      <div className="flex min-h-0 w-full max-w-full flex-1 gap-0 px-0 py-0 md:gap-3 md:px-3 md:py-3 lg:gap-4 lg:px-4 lg:py-3">
+        <aside className="hidden w-64 min-h-0 flex-col overflow-hidden rounded-none surface-panel-muted p-4 backdrop-blur md:rounded-3xl lg:flex">
           {sidebar}
-          <p className="mt-auto pt-3 text-[10px] uppercase tracking-wide text-muted-foreground">
-            {historyHint}
-          </p>
         </aside>
 
         {mobileSidebarOpen ? (
@@ -541,31 +622,28 @@ export default function AppShell(props: AppShellProps): ReactElement {
               onClick={() => setMobileSidebarOpen(false)}
             />
             <div className="relative z-10 flex h-full w-72 flex-col surface-panel-muted p-4 shadow-xl">
-              <div className="mb-3 flex items-center justify-between">
-                <span className="text-sm font-semibold">Chats</span>
+              <div className="mb-3 flex shrink-0 items-center justify-between">
+                <span className="text-sm font-semibold">Workspace</span>
                 <button
                   type="button"
-                  className="rounded-full p-2 hover:bg-surface"
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-full hover:bg-surface"
                   onClick={() => setMobileSidebarOpen(false)}
                 >
                   <X className="h-4 w-4" />
                 </button>
               </div>
               {sidebar}
-              <p className="mt-auto pt-3 text-[10px] uppercase tracking-wide text-muted-foreground">
-                {historyHint}
-              </p>
             </div>
           </div>
         ) : null}
 
-        <main className="flex w-full max-w-full flex-1 flex-col rounded-none surface-panel p-2 md:rounded-3xl md:p-4 backdrop-blur">
-          <header className="relative z-20 mb-3 flex items-center justify-between gap-3">
+        <main className="flex min-h-0 w-full max-w-full flex-1 flex-col overflow-hidden rounded-none surface-panel p-2 backdrop-blur md:rounded-3xl md:p-4">
+          <header className="relative z-20 mb-3 flex shrink-0 items-center justify-between gap-3">
             <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={() => setMobileSidebarOpen(true)}
-                className="p-2 lg:hidden"
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full lg:hidden"
                 aria-label="Open chats"
               >
                 <Menu />
@@ -585,13 +663,13 @@ export default function AppShell(props: AppShellProps): ReactElement {
                 </h1>
               </div>
             </div>
-            <div className="flex gap-2">
+            <div className="flex items-center gap-2">
               {view === "today" && persistHistory && activeSessionId ? (
                 <>
                   <button
                     type="button"
                     onClick={() => setShowInstructionsPanel((open) => !open)}
-                    className="rounded-full bg-surface-muted p-2"
+                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-surface-muted text-foreground hover:bg-surface"
                     aria-label="Chat instructions"
                     aria-pressed={showInstructionsPanel}
                   >
@@ -600,7 +678,7 @@ export default function AppShell(props: AppShellProps): ReactElement {
                   <button
                     type="button"
                     onClick={() => void handleExportChat()}
-                    className="rounded-full bg-surface-muted p-2"
+                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-surface-muted text-foreground hover:bg-surface"
                     aria-label="Export chat as Markdown"
                   >
                     <Download className="h-4 w-4" />
@@ -620,7 +698,7 @@ export default function AppShell(props: AppShellProps): ReactElement {
               <button
                 type="button"
                 onClick={handleToggleSettingsView}
-                className="rounded-full bg-surface-muted p-2"
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-surface-muted text-foreground hover:bg-surface"
                 aria-label="Settings"
               >
                 <Settings className="h-4 w-4" />
@@ -629,7 +707,7 @@ export default function AppShell(props: AppShellProps): ReactElement {
           </header>
 
           {view === "today" && (
-            <section className="flex min-h-0 flex-1 flex-col gap-3 pb-4">
+            <section className="flex min-h-0 flex-1 flex-col gap-3 pb-4" aria-label="Chat">
               {showInstructionsPanel ? (
                 <ChatInstructionsPanel
                   globalPrompt={defaultSystemPrompt}
@@ -640,7 +718,7 @@ export default function AppShell(props: AppShellProps): ReactElement {
               ) : null}
               <div
                 ref={scrollContainerRef}
-                className="flex-1 space-y-3 overflow-y-auto pb-3 pr-1"
+                className="flex-1 space-y-3 overflow-y-auto pb-3 pr-1 scroll-area chat-scroll-touch"
               >
                 {!historyReady ? (
                   <p className="px-2 text-sm text-muted-foreground">Loading chats…</p>
@@ -649,6 +727,9 @@ export default function AppShell(props: AppShellProps): ReactElement {
                   (children || (
                     <SampleMessages
                       onExampleClick={(txt) => void handleSendMessage(txt)}
+                      onSelectComposeMode={(mode) => {
+                        setAssistantMode(mode);
+                      }}
                     />
                   ))}
                 {messages.map((message: UIMessage, index: number) => {
@@ -685,8 +766,18 @@ export default function AppShell(props: AppShellProps): ReactElement {
                 )}
               </div>
 
-              <div className="mt-1">
+              <div className="mt-1 space-y-2">
                 <AssistantModeRow mode={assistantMode} onChangeMode={setAssistantMode} />
+                <AgentCapabilitiesRow
+                  enableWebSearch={agentSettings.enableWebSearch}
+                  enableMemory={agentSettings.enableMemory}
+                  onToggleWebSearch={(enabled): void =>
+                    updateSettings({ agent: { enableWebSearch: enabled } })
+                  }
+                  onToggleMemory={(enabled): void =>
+                    updateSettings({ agent: { enableMemory: enabled } })
+                  }
+                />
               </div>
               {imageError ? (
                 <ChatErrorBanner
@@ -705,31 +796,50 @@ export default function AppShell(props: AppShellProps): ReactElement {
                 }
                 sending={isLoading || imageBusy}
                 placeholder={getChatPlaceholder(assistantMode)}
+                voiceProviderId={selectedProviderId}
+                voiceByokKey={byokKey}
+                voiceBaseUrl={byokBaseUrl}
+                composeSeed={composeSeed}
+                composeSeedKey={composeSeedKey}
               />
             </section>
           )}
 
           {view === "gallery" && (
-            <GalleryView
-              assets={galleryAssets}
-              encrypted={isEncryptedGallery()}
-              onDelete={(assetId) => void handleDeleteGalleryAsset(assetId)}
-            />
+            <div className="min-h-0 flex-1 overflow-hidden">
+              <GalleryView
+                assets={galleryAssets}
+                encrypted={isDesktopVault}
+                onDelete={(assetId) => void handleDeleteGalleryAsset(assetId)}
+                onReuseInChat={(prompt) => seedComposer(prompt, "image")}
+                onGoToChat={() => {
+                  setAssistantMode("image");
+                  setView("today");
+                }}
+              />
+            </div>
           )}
 
           {view === "activity" && (
-            <PlaceholderView
-              title="Activity"
-              description="Usage and recent actions will land here in a later release."
-            />
+            <div className="min-h-0 flex-1 overflow-y-auto scroll-area chat-scroll-touch">
+              <ActivityView
+                sessions={sessionSummaries}
+                assets={galleryAssets}
+                onOpenChat={(sessionId) => void handleSelectChat(sessionId)}
+                onOpenGallery={() => setView("gallery")}
+                onReuseImagePrompt={(prompt) => seedComposer(prompt, "image")}
+              />
+            </div>
           )}
 
           {view === "settings" && (
-            <SettingsView
-              settings={settings}
-              onUpdate={updateSettings}
-              onReset={resetSettings}
-            />
+            <div className="min-h-0 flex-1 overflow-y-auto scroll-area chat-scroll-touch pr-1">
+              <SettingsView
+                settings={settings}
+                onUpdate={updateSettings}
+                onReset={resetSettings}
+              />
+            </div>
           )}
         </main>
       </div>

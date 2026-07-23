@@ -16,6 +16,8 @@ Miro is a **private, local-first BYOK AI studio** — a modular client for text 
 | [Stack](./stack.md) | Libraries |
 | [Architecture](./architecture.md) | Apps & data flow |
 | [Architecture modularity](./architecture-modularity.md) | Package boundaries |
+| [Frontend spec](./frontend-spec.md) | Settings UI contracts (AI & keys), sidebar shell |
+| [Product surfaces](./product-surfaces.md) | Workspace IA — Chat, Gallery, Activity, Create affordances |
 
 ## Surfaces
 

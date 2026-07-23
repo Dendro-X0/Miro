@@ -151,7 +151,7 @@ function buildRuntimeConfig(
   ];
   const openaiProvider: AiRuntimeProvider = {
     id: "openai",
-    label: "OpenAI compatible",
+    label: "OpenAI",
     baseUrl: openaiBaseUrl,
     models: openaiModels,
     ready: openaiApiKey !== null,
@@ -161,7 +161,7 @@ function buildRuntimeConfig(
 
   const openaiCompatibleProvider: AiRuntimeProvider = {
     id: "openai-compatible",
-    label: "OpenAI compatible",
+    label: "Custom",
     baseUrl: openaiBaseUrl,
     models: openaiModels,
     ready: openaiApiKey !== null,

@@ -1,5 +1,6 @@
 export {
   defaultAiViewSettings,
+  defaultAgentSettings,
   defaultAppearanceSettings,
   defaultDataSettings,
   defaultProfileSettings,

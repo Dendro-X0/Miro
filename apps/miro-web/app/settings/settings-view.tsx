@@ -2,14 +2,16 @@
 
 import type { ReactElement } from "react";
 import { useState } from "react";
-import { Bot, Database, Info, User } from "lucide-react";
+import { Bot, Brain, Database, Info, Palette, User } from "lucide-react";
 import type { SettingsState, SettingsUpdateInput } from "@miro/core";
 import ProfileCard from "./profile-card";
 import AiKeysCard from "./ai-keys-card";
 import DataCard from "./data-card";
 import AboutCard from "./about-card";
+import MemoryCard from "./memory-card";
+import AppearanceCard from "./appearance-card";
 import PillButton from "../ui/pill-button";
-import UiKickerLabel from "../ui/kicker-label";
+import PageFrame from "../shell/page-frame";
 import { useAiModelCatalog } from "../lib/use-ai-model-catalog";
 
 interface SettingsViewProps {
@@ -18,7 +20,7 @@ interface SettingsViewProps {
   readonly onReset: () => void;
 }
 
-type SettingsTabId = "profile" | "aiKeys" | "dataStorage" | "about";
+type SettingsTabId = "profile" | "aiKeys" | "agent" | "appearance" | "dataStorage" | "about";
 
 interface SettingsTab {
   readonly id: SettingsTabId;
@@ -27,6 +29,8 @@ interface SettingsTab {
 
 const settingsTabs: readonly SettingsTab[] = [
   { id: "aiKeys", label: "AI & keys" },
+  { id: "agent", label: "Agent" },
+  { id: "appearance", label: "Appearance" },
   { id: "profile", label: "Profile" },
   { id: "dataStorage", label: "Data & storage" },
   { id: "about", label: "About" },
@@ -37,6 +41,12 @@ const defaultSettingsTabId: SettingsTabId = "aiKeys";
 function getSettingsTabIcon(id: SettingsTabId): ReactElement {
   if (id === "aiKeys") {
     return <Bot className="h-3.5 w-3.5" aria-hidden="true" />;
+  }
+  if (id === "agent") {
+    return <Brain className="h-3.5 w-3.5" aria-hidden="true" />;
+  }
+  if (id === "appearance") {
+    return <Palette className="h-3.5 w-3.5" aria-hidden="true" />;
   }
   if (id === "profile") {
     return <User className="h-3.5 w-3.5" aria-hidden="true" />;
@@ -49,7 +59,7 @@ function getSettingsTabIcon(id: SettingsTabId): ReactElement {
 
 export default function SettingsView(props: SettingsViewProps): ReactElement {
   const { settings, onUpdate, onReset } = props;
-  const { profile, aiView, data } = settings;
+  const { profile, appearance, aiView, agent, data } = settings;
   const [activeTab, setActiveTab] = useState<SettingsTabId>(defaultSettingsTabId);
   const {
     runtime: aiRuntime,
@@ -65,20 +75,12 @@ export default function SettingsView(props: SettingsViewProps): ReactElement {
   }
 
   return (
-    <section
-      className="flex min-h-0 flex-1 flex-col gap-3 pb-4 lg:mx-auto lg:w-full lg:max-w-5xl xl:max-w-6xl"
-      aria-label="Settings"
+    <PageFrame
+      title="Settings"
+      description="Control AI providers, appearance, profile details, and workspace data."
+      className="lg:mx-auto lg:w-full lg:max-w-5xl xl:max-w-6xl"
     >
-      <div className="flex items-baseline justify-between">
-        <div>
-          <UiKickerLabel as="p" text="Workspace" />
-          <h2 className="text-lg font-semibold text-foreground">Settings</h2>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Control AI providers, profile details, and workspace data.
-          </p>
-        </div>
-      </div>
-      <div className="mt-2 -mx-1 overflow-x-auto pb-1 text-sm md:text-base">
+      <div className="-mx-1 overflow-x-auto pb-1 text-sm md:text-base">
         <div className="flex min-w-max gap-3 px-1">
           {settingsTabs.map((tab) => {
             const active: boolean = tab.id === activeTab;
@@ -107,7 +109,7 @@ export default function SettingsView(props: SettingsViewProps): ReactElement {
           })}
         </div>
       </div>
-      <div className="mt-2 flex flex-1 flex-col gap-3 border-t border-surface pt-3 text-sm">
+      <div className="mt-1 flex flex-1 flex-col gap-3 border-t border-surface pt-3 text-sm">
         {activeTab === "aiKeys" && (
           <AiKeysCard
             aiView={aiView}
@@ -120,12 +122,16 @@ export default function SettingsView(props: SettingsViewProps): ReactElement {
             onUpdate={onUpdate}
           />
         )}
+        {activeTab === "agent" && <MemoryCard agent={agent} onUpdate={onUpdate} />}
+        {activeTab === "appearance" && (
+          <AppearanceCard appearance={appearance} onUpdate={onUpdate} />
+        )}
         {activeTab === "profile" && <ProfileCard profile={profile} onUpdate={onUpdate} />}
         {activeTab === "dataStorage" && (
           <DataCard data={data} onUpdate={onUpdate} onReset={onReset} />
         )}
         {activeTab === "about" && <AboutCard />}
       </div>
-    </section>
+    </PageFrame>
   );
 }

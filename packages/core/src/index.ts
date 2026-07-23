@@ -10,6 +10,8 @@ export type {
   GenerateImageResult,
   MiroApiClientOptions,
   StreamChatOptions,
+  TranscribeAudioParams,
+  TranscribeAudioResult,
 } from "./api/miro-client";
 export { resolveMiroApiBaseUrl } from "./config/env";
 export { miroApiPaths } from "./config/paths";
@@ -23,10 +25,8 @@ export type {
   AiRuntimeModel,
   AiRuntimeProvider,
 } from "./types/ai-config";
+export type { AgentSettings, MemoryEntry } from "./types/agent";
 export type { ApiChatRequest, ApiUiMessage, ChatMessage, ChatRole } from "./types/chat";
-export type { MiroBackupGalleryAsset, MiroBackupMessage, MiroBackupPayload, MiroBackupSession, MiroEncryptedBackupFile } from "./types/backup";
-export { MIRO_BACKUP_VERSION } from "./types/backup";
-export type { DesktopInfo, VaultGalleryAsset, VaultMessageRecord, VaultSessionSummary } from "./types/vault";
 export type {
   AiCustomModel,
   AiModelFilterTag,
@@ -38,9 +38,13 @@ export type {
   SettingsUpdateInput,
   ThemePreference,
 } from "./types/settings";
+export type { MiroBackupGalleryAsset, MiroBackupMessage, MiroBackupPayload, MiroBackupSession, MiroEncryptedBackupFile } from "./types/backup";
+export { MIRO_BACKUP_VERSION } from "./types/backup";
+export type { DesktopInfo, VaultGalleryAsset, VaultMessageRecord, VaultSessionSummary } from "./types/vault";
 export {
   SETTINGS_STORAGE_KEY,
   applySettingsUpdate,
+  defaultAgentSettings,
   defaultAiViewSettings,
   defaultAppearanceSettings,
   defaultDataSettings,
@@ -71,5 +75,12 @@ export {
   encryptBackupPayload,
   parseEncryptedBackupJson,
 } from "./lib/backup-crypto";
+export {
+  createMemoryEntry,
+  createMemoryId,
+  dedupeMemories,
+  extractMemoryFromAssistantText,
+  formatMemoriesForPrompt,
+} from "./lib/memories";
 export { chatExportFilename, formatChatMarkdown } from "./lib/export-chat";
 export type { ChatMarkdownMessage } from "./lib/export-chat";

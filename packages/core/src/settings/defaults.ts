@@ -1,4 +1,5 @@
 import type {
+  AgentSettings,
   AiViewSettings,
   AppearanceSettings,
   DataSettings,
@@ -36,6 +37,12 @@ export const defaultAiViewSettings: AiViewSettings = {
   byokBaseUrl: "",
 };
 
+export const defaultAgentSettings: AgentSettings = {
+  enableWebSearch: true,
+  enableMemory: true,
+  memories: [],
+};
+
 export const defaultDataSettings: DataSettings = {
   storeConversationHistory: true,
   sendUsageTelemetry: false,
@@ -45,5 +52,6 @@ export const defaultSettingsState: SettingsState = {
   profile: defaultProfileSettings,
   appearance: defaultAppearanceSettings,
   aiView: defaultAiViewSettings,
+  agent: defaultAgentSettings,
   data: defaultDataSettings,
 };

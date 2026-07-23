@@ -1,3 +1,7 @@
+import type { AgentSettings } from "./agent";
+
+export type { AgentSettings, MemoryEntry } from "./agent";
+
 export type ThemePreference = "system" | "light" | "dark";
 
 export interface ProfileSettings {
@@ -50,6 +54,7 @@ export interface SettingsState {
   readonly profile: ProfileSettings;
   readonly appearance: AppearanceSettings;
   readonly aiView: AiViewSettings;
+  readonly agent: AgentSettings;
   readonly data: DataSettings;
 }
 
@@ -57,5 +62,6 @@ export interface SettingsUpdateInput {
   readonly profile?: Partial<ProfileSettings>;
   readonly appearance?: Partial<AppearanceSettings>;
   readonly aiView?: Partial<AiViewSettings>;
+  readonly agent?: Partial<AgentSettings>;
   readonly data?: Partial<DataSettings>;
 }

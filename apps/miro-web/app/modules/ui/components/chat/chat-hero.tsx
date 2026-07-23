@@ -1,14 +1,17 @@
 "use client";
 
 import type { ReactElement } from "react";
+import { ImageIcon, MessageCircle } from "lucide-react";
+import type { AssistantMode } from "../../shell/types";
 
 interface ChatHeroProps {
   readonly examples: readonly string[];
   readonly onExampleClick?: (prompt: string) => void;
+  readonly onSelectComposeMode?: (mode: Extract<AssistantMode, "text" | "image">) => void;
 }
 
 export default function ChatHero(props: ChatHeroProps): ReactElement {
-  const { examples, onExampleClick } = props;
+  const { examples, onExampleClick, onSelectComposeMode } = props;
 
   function handleExampleClick(prompt: string): void {
     if (!onExampleClick) {
@@ -27,9 +30,28 @@ export default function ChatHero(props: ChatHeroProps): ReactElement {
           Ask anything, just like in your favorite chat apps.
         </h2>
         <p className="mt-4 text-sm text-muted-foreground">
-          Use the box below to explore boards, plan projects, or get quick answers about what is happening in your
-          workspace. You can also start with one of these examples.
+          Use the box below to draft, plan, or generate images. Start with an example, or type your own prompt.
         </p>
+        {onSelectComposeMode ? (
+          <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
+            <button
+              type="button"
+              onClick={(): void => onSelectComposeMode("text")}
+              className="inline-flex items-center gap-1.5 rounded-full border border-surface bg-surface-muted px-3 py-1.5 text-xs font-medium text-foreground hover:border-sky-400/80 hover:text-sky-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
+            >
+              <MessageCircle className="h-3.5 w-3.5" aria-hidden="true" />
+              Text chat
+            </button>
+            <button
+              type="button"
+              onClick={(): void => onSelectComposeMode("image")}
+              className="inline-flex items-center gap-1.5 rounded-full border border-surface bg-surface-muted px-3 py-1.5 text-xs font-medium text-foreground hover:border-sky-400/80 hover:text-sky-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
+            >
+              <ImageIcon className="h-3.5 w-3.5" aria-hidden="true" />
+              Image
+            </button>
+          </div>
+        ) : null}
         <div className="mt-5 flex flex-col items-stretch gap-2 sm:mt-6 sm:flex-row sm:flex-wrap sm:justify-center">
           {examples.map((example: string): ReactElement => (
             <button
@@ -42,6 +64,14 @@ export default function ChatHero(props: ChatHeroProps): ReactElement {
             </button>
           ))}
         </div>
+        <p className="mt-5 text-xs text-muted-foreground">
+          Hold <kbd className="rounded border border-surface bg-surface-muted px-1.5 py-0.5 font-mono text-[10px] text-foreground">Shift</kbd>
+          {" + "}
+          <kbd className="rounded border border-surface bg-surface-muted px-1.5 py-0.5 font-mono text-[10px] text-foreground">Enter</kbd>
+          {" for multi-line prompts. Press "}
+          <kbd className="rounded border border-surface bg-surface-muted px-1.5 py-0.5 font-mono text-[10px] text-foreground">Enter</kbd>
+          {" to send."}
+        </p>
       </div>
     </div>
   );

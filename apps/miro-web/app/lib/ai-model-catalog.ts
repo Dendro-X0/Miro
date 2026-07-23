@@ -28,27 +28,28 @@ export function modelOptionKey(providerId: string, modelId: string): string {
   return `${providerId}:${modelId}`;
 }
 
-const RUNTIME_PROVIDER_ALIASES: Readonly<Record<string, string>> = {
-  openai: "openai-compatible",
-};
-
-function canonicalRuntimeProviderId(providerId: string): string {
-  return RUNTIME_PROVIDER_ALIASES[providerId] ?? providerId;
-}
-
 function providerLabelFromRuntime(
   runtime: AiRuntimeConfig | null,
   providerId: string,
 ): string {
   const provider = runtime?.providers.find((entry) => entry.id === providerId);
-  if (provider) {
-    return provider.label;
+  if (providerId === "openai") {
+    return "OpenAI";
   }
   if (providerId === "openai-compatible") {
-    return "OpenAI compatible";
+    return "Custom";
   }
   if (providerId === "local") {
     return "Local";
+  }
+  if (providerId === "anthropic") {
+    return "Anthropic";
+  }
+  if (providerId === "google") {
+    return "Google";
+  }
+  if (provider) {
+    return provider.label;
   }
   return providerId;
 }
@@ -173,10 +174,6 @@ export function buildModelCatalog(input: BuildModelCatalogInput): readonly Catal
   }
 
   for (const providerId of providerIds) {
-    const canonicalId = canonicalRuntimeProviderId(providerId);
-    if (providerId !== canonicalId && providerIds.has(canonicalId)) {
-      continue;
-    }
     const providerLabel = providerLabelFromRuntime(runtime, providerId);
     const discovered = discoveredByProvider[providerId] ?? [];
     if (discovered.length > 0) {

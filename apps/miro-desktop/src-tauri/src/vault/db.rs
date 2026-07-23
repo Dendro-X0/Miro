@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::sync::Mutex;
 
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
 
@@ -222,9 +222,13 @@ pub fn get_session_instructions(app: &AppHandle, session_id: String) -> Result<S
     let state = vault_state(app)?;
     let conn = state.conn.lock().map_err(|_| CommandError::Vault("vault lock poisoned".into()))?;
     let mut stmt = conn.prepare("SELECT instructions_encrypted FROM sessions WHERE id = ?1")?;
-    let encrypted: Option<Vec<u8>> = stmt
-        .query_row(params![session_id], |row| row.get(0))
-        .optional()?;
+    let encrypted: Option<Vec<u8>> = match stmt.query_row(params![session_id], |row| {
+        row.get::<_, Option<Vec<u8>>>(0)
+    }) {
+        Ok(value) => value,
+        Err(rusqlite::Error::QueryReturnedNoRows) => None,
+        Err(error) => return Err(CommandError::from(error)),
+    };
     match encrypted {
         Some(payload) if !payload.is_empty() => state.cipher.decrypt(&payload),
         _ => Ok(String::new()),

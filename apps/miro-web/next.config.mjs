@@ -21,6 +21,7 @@ const config = {
             { source: "/api/chat", destination: `${apiBaseUrl}/api/chat` },
             { source: "/ai/config", destination: `${apiBaseUrl}/ai/config` },
             { source: "/ai/models", destination: `${apiBaseUrl}/ai/models` },
+            { source: "/ai/transcribe", destination: `${apiBaseUrl}/ai/transcribe` },
             { source: "/v2/ai/:path*", destination: `${apiBaseUrl}/v2/ai/:path*` },
           ];
         },

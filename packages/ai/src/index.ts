@@ -21,6 +21,9 @@ import {
   type AiProviderId,
 } from "./providers";
 import { listModels } from "./list-models";
+import { createWebSearchTool } from "./agent-tools";
+import { searchWeb } from "./web-search";
+import { providerSupportsTranscription, transcribeAudio } from "./transcribe";
 
 export type { AiProviderId };
 export {
@@ -31,9 +34,14 @@ export {
   createOpenAiCompatibleImageClient,
   createGoogleImagenClient,
   listModels,
+  createWebSearchTool,
+  searchWeb,
+  providerSupportsTranscription,
+  transcribeAudio,
 };
 export type { AiImageClient, AiImageParams, AiImageResult, ImageClientConfig };
 export type { DiscoveredModel, ListModelsConfig } from "./list-models";
+export type { WebSearchResult } from "./web-search";
 
 export interface ModelConfig {
   readonly provider: string;

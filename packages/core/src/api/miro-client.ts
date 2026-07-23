@@ -36,6 +36,21 @@ export interface GenerateImageResult {
   readonly images: readonly { readonly url: string }[];
 }
 
+export interface TranscribeAudioParams {
+  readonly file: Blob;
+  readonly filename?: string;
+  readonly provider?: string;
+  readonly byokKey?: string;
+  readonly baseUrl?: string;
+  readonly language?: string;
+  readonly model?: string;
+}
+
+export interface TranscribeAudioResult {
+  readonly text: string;
+  readonly provider?: string;
+}
+
 export function createMiroApiClient(options: CreateMiroApiClientOptions = {}): MiroApiClient {
   if (options.sameOrigin) {
     return new MiroApiClient({ baseUrl: "" });
@@ -291,5 +306,45 @@ export class MiroApiClient {
     }
 
     return (await response.json()) as GenerateImageResult;
+  }
+
+  async transcribeAudio(params: TranscribeAudioParams): Promise<TranscribeAudioResult> {
+    const form = new FormData();
+    form.append("file", params.file, params.filename ?? "recording.webm");
+    if (params.provider) {
+      form.append("provider", params.provider);
+    }
+    if (params.byokKey) {
+      form.append("byokKey", params.byokKey);
+    }
+    if (params.baseUrl) {
+      form.append("baseUrl", params.baseUrl);
+    }
+    if (params.language) {
+      form.append("language", params.language);
+    }
+    if (params.model) {
+      form.append("model", params.model);
+    }
+
+    const response = await fetch(`${this.baseUrl}${miroApiPaths.transcribe}`, {
+      method: "POST",
+      body: form,
+    });
+
+    if (!response.ok) {
+      let detail = `Transcription failed (${response.status})`;
+      try {
+        const payload = (await response.json()) as { readonly error?: string };
+        if (payload.error) {
+          detail = payload.error;
+        }
+      } catch {
+        // keep status text
+      }
+      throw new Error(detail);
+    }
+
+    return (await response.json()) as TranscribeAudioResult;
   }
 }

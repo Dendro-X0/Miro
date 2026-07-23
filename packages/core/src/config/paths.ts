@@ -4,4 +4,5 @@ export const miroApiPaths = {
   config: "/ai/config",
   models: "/ai/models",
   image: "/v2/ai/image",
+  transcribe: "/ai/transcribe",
 } as const;

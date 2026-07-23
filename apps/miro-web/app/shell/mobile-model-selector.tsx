@@ -13,7 +13,7 @@ import type {
 
 function getProviderIcon(providerId: string): ReactElement | null {
   const logoClassName: string = "h-3.5 w-3.5";
-  if (providerId === "openai-compatible") {
+  if (providerId === "openai" || providerId === "openai-compatible") {
     return (
       <>
         <img

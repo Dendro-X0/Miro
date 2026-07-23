@@ -11,6 +11,7 @@ export interface ChatSessionSummary {
   readonly id: string;
   readonly title: string;
   readonly pinned: boolean;
+  readonly updatedAt: number;
 }
 
 export interface ChatMessageRecord {
@@ -91,6 +92,7 @@ function sortSessions(
       id: session.id,
       title: session.title,
       pinned: session.pinned,
+      updatedAt: session.updatedAt,
     }));
 }
 
@@ -99,6 +101,7 @@ function fromVaultSession(session: VaultSessionSummary): ChatSessionSummary {
     id: session.id,
     title: session.title,
     pinned: session.pinned,
+    updatedAt: session.updatedAt,
   };
 }
 
@@ -150,7 +153,12 @@ export async function createChatSession(title = "New chat"): Promise<ChatSession
     sessions: [session, ...store.sessions],
     messages: store.messages,
   });
-  return { id: session.id, title: session.title, pinned: session.pinned };
+  return {
+    id: session.id,
+    title: session.title,
+    pinned: session.pinned,
+    updatedAt: session.updatedAt,
+  };
 }
 
 export async function deleteChatSession(sessionId: string): Promise<void> {
@@ -188,6 +196,7 @@ export async function renameChatSession(
     id: sessionId,
     title: updated?.title ?? nextTitle,
     pinned: updated?.pinned ?? false,
+    updatedAt: updated?.updatedAt ?? stamp,
   };
 }
 
@@ -211,6 +220,7 @@ export async function pinChatSession(
     id: sessionId,
     title: updated?.title ?? "Untitled chat",
     pinned: updated?.pinned ?? pinned,
+    updatedAt: updated?.updatedAt ?? stamp,
   };
 }
 
