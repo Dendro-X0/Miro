@@ -26,7 +26,7 @@ Main pane   → mode content
 | Job | Shipped | Gap / next |
 |-----|---------|------------|
 | Daily assistant | Streaming chat, modes, model switcher, voice STT, web search + memory, instructions, regenerate/edit, Markdown export | Stronger empty-state compose entry (Text / Image chips) |
-| Content gen | In-thread image gen, vision attach, Gallery browse/delete | Reuse prompt / continue in Chat from Gallery |
+| Content gen | In-thread image gen, vision attach, Gallery browse/delete, **ComfyUI localhost bridge** (curated txt2img) | img2img preset; Projects + Comfy presets |
 | Shell | Studio sidebar, Appearance, AI & keys | — |
 | Activity | Placeholder | Read-only feed: recent sessions + gallery thumbs |
 | Library / Projects | Gallery + chat list | Projects folders (roadmap) after Activity is useful |
@@ -44,10 +44,10 @@ Main pane   → mode content
 
 ### B. Content generation
 
-- In-chat text + image
-- Gallery grid with delete
-- **Reuse prompt** and **Continue in Chat** (sets image mode + seeds composer / navigates to Chat)
-- Defer: video, ComfyUI node UI, multi-step pipelines
+- In-chat text + image (API providers)
+- **ComfyUI** — local diffusion via HTTP API; curated txt2img workflow only (no node graph)
+- Gallery grid with delete / reuse in Chat
+- Defer: video, ComfyUI node UI, multi-step custom graphs, img2img preset
 
 ### C. Library / continuity
 

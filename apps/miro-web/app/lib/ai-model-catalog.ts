@@ -42,6 +42,9 @@ function providerLabelFromRuntime(
   if (providerId === "local") {
     return "Local";
   }
+  if (providerId === "comfyui") {
+    return "ComfyUI";
+  }
   if (providerId === "anthropic") {
     return "Anthropic";
   }
@@ -214,7 +217,7 @@ export function findProviderRuntime(
 ): { readonly ready: boolean; readonly baseUrl: string } {
   const provider = runtime?.providers.find((entry) => entry.id === providerId);
   return {
-    ready: provider?.ready ?? (providerId === "local" || providerId === "mock"),
+    ready: provider?.ready ?? (providerId === "local" || providerId === "comfyui" || providerId === "mock"),
     baseUrl: provider?.baseUrl ?? "",
   };
 }
@@ -225,7 +228,7 @@ export function providerHasCredentials(
   byokKey: string,
   byokProvider: string | null,
 ): boolean {
-  if (providerId === "mock" || providerId === "local") {
+  if (providerId === "mock" || providerId === "local" || providerId === "comfyui") {
     return true;
   }
   if (byokKey.trim().length > 0 && (!byokProvider || byokProvider === providerId)) {

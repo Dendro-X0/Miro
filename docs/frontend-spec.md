@@ -111,8 +111,11 @@ Settings form / connection panel (single active BYOK connection).
 | Google | `google` | Hidden |
 | Custom | `openai-compatible` | Required (placeholder OpenRouter / Groq / LiteLLM) |
 | Local | `local` | Shown; default hint `http://127.0.0.1:11434` |
+| ComfyUI | `comfyui` | Required; default `http://127.0.0.1:8188` (image-only local diffusion) |
 
 Mock is omitted from the primary picker unless runtime only exposes mock (dev fallback).
+
+**ComfyUI:** curated txt2img preset via ComfyUI HTTP API (`/prompt` → poll `/history` → `/view`). No node graph in Miro. Checkpoint filename = selected image model id. Chat text is not supported on this source — switch to another provider for conversations.
 
 Runtime may still list both `openai` and `openai-compatible`; the UI source list **dedupes** to the five sources above.
 

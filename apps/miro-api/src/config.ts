@@ -1,4 +1,11 @@
-export type AiProviderName = "mock" | "openai" | "openai-compatible" | "anthropic" | "google" | "local";
+export type AiProviderName =
+  | "mock"
+  | "openai"
+  | "openai-compatible"
+  | "anthropic"
+  | "google"
+  | "local"
+  | "comfyui";
 
 export interface AiModelsConfig {
   readonly fast: string;
@@ -50,6 +57,7 @@ const defaultPort: number = 8787;
 const defaultAiProvider: AiProviderName = "mock";
 const defaultAiBaseUrl: string = "https://api.openai.com/v1";
 const defaultOllamaBaseUrl: string = "http://localhost:11434/v1";
+const defaultComfyBaseUrl: string = "http://127.0.0.1:8188";
 
 function parsePort(rawPort: string | undefined): number {
   const parsed: number = rawPort === undefined ? Number.NaN : Number(rawPort);
@@ -83,6 +91,9 @@ function parseAiProvider(rawProvider: string | undefined): AiProviderName {
   }
   if (rawProvider === "local" || rawProvider === "ollama") {
     return "local";
+  }
+  if (rawProvider === "comfyui" || rawProvider === "comfy") {
+    return "comfyui";
   }
   return defaultAiProvider;
 }
@@ -274,6 +285,29 @@ function buildRuntimeConfig(
     supportsByok: true,
   };
   providers.push(localProvider);
+
+  const comfyBaseUrl: string =
+    readEnv("MIRO_AI_COMFYUI_BASE_URL") ??
+    (provider === "comfyui" ? baseUrl : defaultComfyBaseUrl);
+  const comfyCheckpoint: string =
+    readEnv("MIRO_AI_COMFYUI_CHECKPOINT") ?? "v1-5-pruned-emaonly.safetensors";
+  const comfyProvider: AiRuntimeProvider = {
+    id: "comfyui",
+    label: "ComfyUI",
+    baseUrl: comfyBaseUrl,
+    models: [
+      {
+        id: comfyCheckpoint,
+        alias: "image-default",
+        kind: "image",
+        label: "Local diffusion checkpoint",
+        tags: ["image", "local", "quality"],
+      },
+    ],
+    ready: true,
+    supportsByok: false,
+  };
+  providers.push(comfyProvider);
 
   const runtime: AiRuntimeConfig = {
     defaultProviderId: provider,

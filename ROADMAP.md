@@ -91,9 +91,10 @@ Shipped for the desktop-first v1 band:
 - [x] **Option A — API image generation**
   - OpenAI-compatible `/images/generations` (DALL·E / gpt-image) + Google Imagen
   - Display in-thread; save to encrypted desktop vault gallery (web: localStorage gallery)
-- [ ] **Option B — ComfyUI localhost bridge** (v1.x)
-  - Submit presets to local ComfyUI HTTP API (txt2img / img2img)
+- [x] **Option B — ComfyUI localhost bridge** (v1.x)
+  - Submit presets to local ComfyUI HTTP API (txt2img)
   - No node graph — curated workflows only
+  - Settings source `comfyui`; checkpoint discovery via `/object_info`
 
 ### Phase 4 — Ship
 
@@ -114,7 +115,7 @@ Phases 1–4 checklist items above are done for the current v1 band. Remaining w
 
 Only after the definition-of-done checklist is complete:
 
-- [ ] Second image path (API + ComfyUI if v1 shipped with only one)
+- [x] Second image path (API + ComfyUI localhost bridge)
 - [x] Additional providers (Anthropic) with thin adapters; Google text already in golden path
 - [ ] **Projects** — encrypted folders grouping chats + assets + one ComfyUI preset
 - [x] Export conversations (Markdown)

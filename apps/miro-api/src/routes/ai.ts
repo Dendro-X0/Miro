@@ -403,12 +403,12 @@ export function registerAiRoutes(deps: AiRouteDeps): void {
     return context.json({
       provider: ai.provider,
       models: ai.models,
-      ready: ai.apiKey !== null || ai.provider === "mock" || ai.provider === "local",
+      ready: ai.apiKey !== null || ai.provider === "mock" || ai.provider === "local" || ai.provider === "comfyui",
       runtime: ai.runtime,
       image: {
         path: "api",
-        providers: ["mock", "openai", "openai-compatible", "google"],
-        deferred: ["comfyui"],
+        providers: ["mock", "openai", "openai-compatible", "google", "comfyui"],
+        deferred: [],
       },
     });
   });

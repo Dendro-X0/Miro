@@ -1,4 +1,5 @@
 import { normalizeProviderId, type AiProviderId } from "./providers";
+import { createComfyUiImageClient } from "./comfyui";
 
 export interface AiImageParams {
   readonly model: string;
@@ -230,12 +231,16 @@ export function createAiImageClient(config: ImageClientConfig): AiImageClient {
 
   if (provider === "local") {
     throw new Error(
-      "Local/Ollama does not support image generation in v1. Use openai-compatible (DALL·E / gpt-image) or Google Imagen.",
+      "Local/Ollama does not support image generation. Use ComfyUI for local diffusion, or openai-compatible / Google Imagen for API images.",
     );
   }
 
+  if (provider === "comfyui") {
+    return createComfyUiImageClient(config);
+  }
+
   if (provider === "anthropic") {
-    throw new Error("Anthropic image generation is not available in v1. Use openai-compatible or google.");
+    throw new Error("Anthropic image generation is not available. Use openai-compatible, google, or comfyui.");
   }
 
   throw new Error(`Unsupported image provider: ${config.provider}`);

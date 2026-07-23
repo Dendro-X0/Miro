@@ -1,4 +1,5 @@
 import { normalizeProviderId } from "./providers";
+import { listComfyCheckpoints, DEFAULT_COMFYUI_BASE_URL } from "./comfyui";
 
 const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1";
 const DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434/v1";
@@ -180,6 +181,17 @@ export async function listModels(config: ListModelsConfig): Promise<DiscoveredMo
   if (provider === "local") {
     const baseUrl = config.baseUrl?.trim() || DEFAULT_OLLAMA_BASE_URL;
     return listOllamaModels(baseUrl);
+  }
+
+  if (provider === "comfyui") {
+    const baseUrl = config.baseUrl?.trim() || DEFAULT_COMFYUI_BASE_URL;
+    const checkpoints = await listComfyCheckpoints(baseUrl);
+    return checkpoints.map((id) => ({
+      id,
+      label: id,
+      kind: "image" as const,
+      tags: ["image", "local", "quality"] as const,
+    }));
   }
 
   if (provider === "google") {

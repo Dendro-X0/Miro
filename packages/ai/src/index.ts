@@ -24,6 +24,12 @@ import { listModels } from "./list-models";
 import { createWebSearchTool } from "./agent-tools";
 import { searchWeb } from "./web-search";
 import { providerSupportsTranscription, transcribeAudio } from "./transcribe";
+import {
+  buildTxt2ImgWorkflow,
+  createComfyUiImageClient,
+  DEFAULT_COMFYUI_BASE_URL,
+  listComfyCheckpoints,
+} from "./comfyui";
 
 export type { AiProviderId };
 export {
@@ -33,11 +39,15 @@ export {
   createMockAiImageClient,
   createOpenAiCompatibleImageClient,
   createGoogleImagenClient,
+  createComfyUiImageClient,
+  buildTxt2ImgWorkflow,
+  listComfyCheckpoints,
   listModels,
   createWebSearchTool,
   searchWeb,
   providerSupportsTranscription,
   transcribeAudio,
+  DEFAULT_COMFYUI_BASE_URL,
 };
 export type { AiImageClient, AiImageParams, AiImageResult, ImageClientConfig };
 export type { DiscoveredModel, ListModelsConfig } from "./list-models";
@@ -130,6 +140,12 @@ export function createModel(config: ModelConfig): LanguageModel {
 
   if (provider === "openai" || provider === "openai-compatible" || provider === "local") {
     return createOpenAiCompatibleModel(config);
+  }
+
+  if (provider === "comfyui") {
+    throw new Error(
+      "ComfyUI is an image-only local diffusion bridge. Switch the chat model to OpenAI, Anthropic, Google, Custom, or Local (Ollama).",
+    );
   }
 
   throw new Error(`Unsupported provider: ${config.provider}`);

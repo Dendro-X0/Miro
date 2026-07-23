@@ -48,10 +48,15 @@ async function testAiConfigIncludesImagePath(app: AppInstance): Promise<void> {
   const response: Response = await app.request("/ai/config");
   assert.strictEqual(response.status, 200);
   const body = (await response.json()) as {
-    readonly image?: { readonly path?: string; readonly deferred?: readonly string[] };
+    readonly image?: {
+      readonly path?: string;
+      readonly providers?: readonly string[];
+      readonly deferred?: readonly string[];
+    };
   };
   assert.strictEqual(body.image?.path, "api");
-  assert.ok(body.image?.deferred?.includes("comfyui"));
+  assert.ok(body.image?.providers?.includes("comfyui"));
+  assert.ok(!(body.image?.deferred ?? []).includes("comfyui"));
 }
 
 async function testAiModelsDiscoveryMock(app: AppInstance): Promise<void> {

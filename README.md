@@ -25,7 +25,7 @@ Be clear before you clone:
 |----------|---------|
 | Open WebUI / LibreChat competitor | No RAG, agents, tool hubs, or multi-user SaaS in v1 |
 | Multi-tenant AI platform | Single-user client; Postgres/auth is optional experiment only |
-| ComfyUI / Stable Diffusion suite | Image via cloud APIs in v1; ComfyUI bridge deferred |
+| ComfyUI / Stable Diffusion suite | No node graph — curated localhost HTTP bridge (`comfyui` source); cloud API images also supported |
 | Mobile product in v1 | Expo is the **next-version** track; **desktop** owns the privacy vault |
 | Hosted “Miro cloud” | You run it locally; optional self-host of lean `@miro/api` |
 

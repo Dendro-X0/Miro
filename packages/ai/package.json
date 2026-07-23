@@ -7,7 +7,7 @@
   "types": "src/index.ts",
   "sideEffects": false,
   "scripts": {
-    "test": "tsx test/ai-providers.test.ts && tsx test/list-models.test.ts"
+    "test": "tsx test/ai-providers.test.ts && tsx test/list-models.test.ts && tsx test/comfyui.test.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.99",

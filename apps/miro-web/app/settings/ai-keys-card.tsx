@@ -90,6 +90,14 @@ const PRIMARY_SOURCES: readonly AiSourceOption[] = [
     baseUrlMode: "required",
     keyRequired: false,
   },
+  {
+    id: "comfyui",
+    label: "ComfyUI",
+    description: "Local diffusion (API bridge)",
+    supportsByok: false,
+    baseUrlMode: "required",
+    keyRequired: false,
+  },
 ];
 
 function buildSourceOptions(runtime: AiRuntimeConfig | null): readonly AiSourceOption[] {
@@ -216,6 +224,9 @@ function getProviderLogoIcon(providerId: string): ReactElement | null {
       </>
     );
   }
+  if (providerId === "comfyui") {
+    return <Server className={logoClassName} aria-hidden="true" />;
+  }
   if (providerId === "mock") {
     return <Sparkles className={logoClassName} aria-hidden="true" />;
   }
@@ -228,6 +239,9 @@ function connectionStatusCopy(source: AiSourceOption, connected: boolean): strin
   }
   if (source.id === "local") {
     return "Refresh to load models from your Ollama host.";
+  }
+  if (source.id === "comfyui") {
+    return "Start ComfyUI (default :8188), then refresh to load checkpoints.";
   }
   if (source.baseUrlMode === "required") {
     return "Add a key and base URL, then refresh to load models.";
@@ -301,7 +315,9 @@ export default function AiKeysCard(props: AiKeysCardProps): ReactElement {
   const emptyModelsCopy: string =
     source.id === "local"
       ? "Connect this source to load available models from Ollama."
-      : "Connect this source to load available models.";
+      : source.id === "comfyui"
+        ? "Refresh to load checkpoints from ComfyUI. Ensure ComfyUI is running with API enabled."
+        : "Connect this source to load available models.";
 
   function handleSelectSource(nextSourceId: string): void {
     const nextSource: AiSourceOption | undefined = sourceOptions.find(
@@ -313,14 +329,24 @@ export default function AiKeysCard(props: AiKeysCardProps): ReactElement {
     const firstModel: AiModelOption | undefined = modelOptions.find(
       (model) => model.providerId === nextSource.id,
     );
+    const firstImageModel: AiModelOption | undefined = modelOptions.find(
+      (model) => model.providerId === nextSource.id && model.tags.includes("image"),
+    );
     const nextModelId: string = firstModel?.id ?? selectedModelId;
-    onUpdate({
-      aiView: {
-        selectedProviderId: nextSource.id,
-        selectedModelId: nextModelId,
-        byokProvider: nextSource.id,
-      },
-    });
+    const patch: Partial<SettingsState["aiView"]> = {
+      selectedProviderId: nextSource.id,
+      selectedModelId: nextModelId,
+      byokProvider: nextSource.id,
+    };
+    if (nextSource.id === "comfyui") {
+      if (!(aiView.byokBaseUrl ?? "").trim()) {
+        patch.byokBaseUrl = "http://127.0.0.1:8188";
+      }
+      if (firstImageModel) {
+        patch.selectedImageModelId = firstImageModel.id;
+      }
+    }
+    onUpdate({ aiView: patch });
   }
 
   function handleSelectModel(nextModel: AiModelOption): void {
@@ -395,9 +421,11 @@ export default function AiKeysCard(props: AiKeysCardProps): ReactElement {
   const baseUrlPlaceholder: string =
     source.id === "local"
       ? "http://127.0.0.1:11434"
-      : source.id === "openai-compatible"
-        ? "https://openrouter.ai/api/v1"
-        : "https://api.openai.com/v1";
+      : source.id === "comfyui"
+        ? "http://127.0.0.1:8188"
+        : source.id === "openai-compatible"
+          ? "https://openrouter.ai/api/v1"
+          : "https://api.openai.com/v1";
 
   return (
     <SettingsCard
@@ -412,8 +440,8 @@ export default function AiKeysCard(props: AiKeysCardProps): ReactElement {
                 Sources
               </p>
               <p className="text-xs text-muted-foreground">
-                OpenAI, Anthropic, and Google are ready placeholders. Custom and Local cover gateways and
-                Ollama.
+                OpenAI, Anthropic, Google, Custom, Local (Ollama), and ComfyUI (local diffusion).
+                ComfyUI is image-only — switch back to a chat provider for text.
               </p>
             </div>
             <UiBadge tone={connected ? "primary" : "muted"}>
@@ -471,7 +499,8 @@ export default function AiKeysCard(props: AiKeysCardProps): ReactElement {
                 disabled={
                   catalogLoading ||
                   (!connected && source.keyRequired) ||
-                  (source.id === "openai-compatible" && !(aiView.byokBaseUrl ?? "").trim())
+                  (source.id === "openai-compatible" && !(aiView.byokBaseUrl ?? "").trim()) ||
+                  (source.id === "comfyui" && !(aiView.byokBaseUrl ?? "").trim())
                 }
                 className="rounded-full border border-surface bg-surface px-3 py-1 text-[11px] text-muted-foreground hover:border-sky-400/80 hover:text-sky-200 disabled:opacity-60"
               >
@@ -492,7 +521,9 @@ export default function AiKeysCard(props: AiKeysCardProps): ReactElement {
                 </label>
               ) : (
                 <div className="text-xs text-muted-foreground md:col-span-1">
-                  No API key required for local Ollama. Ensure the daemon is running, then refresh.
+                  {source.id === "comfyui"
+                    ? "No API key required. Point the base URL at your ComfyUI server, then refresh checkpoints."
+                    : "No API key required for local Ollama. Ensure the daemon is running, then refresh."}
                 </div>
               )}
               <label className="block text-sm font-medium text-foreground">

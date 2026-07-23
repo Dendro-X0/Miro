@@ -5,7 +5,8 @@ export type AiProviderId =
   | "openai-compatible"
   | "anthropic"
   | "google"
-  | "local";
+  | "local"
+  | "comfyui";
 
 export function normalizeProviderId(provider: string): AiProviderId {
   const trimmed = provider.trim().toLowerCase();
@@ -17,6 +18,9 @@ export function normalizeProviderId(provider: string): AiProviderId {
   }
   if (trimmed === "local" || trimmed === "ollama") {
     return "local";
+  }
+  if (trimmed === "comfyui" || trimmed === "comfy") {
+    return "comfyui";
   }
   if (trimmed === "anthropic") {
     return "anthropic";
