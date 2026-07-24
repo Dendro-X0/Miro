@@ -29,6 +29,7 @@ pub fn run() {
             commands::vault_list_gallery,
             commands::vault_save_gallery_asset,
             commands::vault_delete_gallery_asset,
+            commands::vault_clear_project_membership,
             commands::keychain_set_secret,
             commands::keychain_get_secret,
             commands::keychain_delete_secret,

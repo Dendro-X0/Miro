@@ -4,6 +4,7 @@ import type {
   AppearanceSettings,
   DataSettings,
   ProfileSettings,
+  ProjectsSettings,
   SettingsState,
 } from "../types/settings";
 
@@ -28,6 +29,8 @@ export const defaultAiViewSettings: AiViewSettings = {
   selectedProviderId: "google",
   selectedModelId: "gemini-2.5-flash",
   selectedImageModelId: "",
+  selectedImageProviderId: "",
+  imageBaseUrl: "",
   byokProvider: null,
   byokKey: "",
   byokLabel: "",
@@ -43,6 +46,11 @@ export const defaultAgentSettings: AgentSettings = {
   memories: [],
 };
 
+export const defaultProjectsSettings: ProjectsSettings = {
+  items: [],
+  activeProjectId: null,
+};
+
 export const defaultDataSettings: DataSettings = {
   storeConversationHistory: true,
   sendUsageTelemetry: false,
@@ -53,5 +61,6 @@ export const defaultSettingsState: SettingsState = {
   appearance: defaultAppearanceSettings,
   aiView: defaultAiViewSettings,
   agent: defaultAgentSettings,
+  projects: defaultProjectsSettings,
   data: defaultDataSettings,
 };

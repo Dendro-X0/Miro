@@ -4,10 +4,11 @@ use tauri::AppHandle;
 use crate::error::CommandError;
 use crate::keychain;
 use crate::vault::{
-    create_session, delete_gallery_asset, delete_session, export_backup, get_session_instructions,
-    import_backup, list_gallery_assets, list_sessions, load_messages, pin_session, rename_session,
-    save_gallery_asset, save_message, set_session_instructions, truncate_messages_after,
-    VaultBackupPayload, VaultGalleryAsset, VaultMessageRecord, VaultSessionSummary,
+    clear_project_membership, create_session, delete_gallery_asset, delete_session, export_backup,
+    get_session_instructions, import_backup, list_gallery_assets, list_sessions, load_messages,
+    pin_session, rename_session, save_gallery_asset, save_message, set_session_instructions,
+    truncate_messages_after, VaultBackupPayload, VaultGalleryAsset, VaultMessageRecord,
+    VaultSessionSummary,
 };
 
 #[derive(Debug, Serialize)]
@@ -31,8 +32,12 @@ pub fn vault_list_sessions(app: AppHandle) -> Result<Vec<VaultSessionSummary>, C
 }
 
 #[tauri::command]
-pub fn vault_create_session(app: AppHandle, title: String) -> Result<VaultSessionSummary, CommandError> {
-    create_session(&app, title)
+pub fn vault_create_session(
+    app: AppHandle,
+    title: String,
+    project_id: Option<String>,
+) -> Result<VaultSessionSummary, CommandError> {
+    create_session(&app, title, project_id)
 }
 
 #[tauri::command]
@@ -122,13 +127,22 @@ pub fn vault_save_gallery_asset(
     mime: String,
     data_url: String,
     session_id: Option<String>,
+    project_id: Option<String>,
 ) -> Result<VaultGalleryAsset, CommandError> {
-    save_gallery_asset(&app, prompt, mime, data_url, session_id)
+    save_gallery_asset(&app, prompt, mime, data_url, session_id, project_id)
 }
 
 #[tauri::command]
 pub fn vault_delete_gallery_asset(app: AppHandle, asset_id: String) -> Result<(), CommandError> {
     delete_gallery_asset(&app, asset_id)
+}
+
+#[tauri::command]
+pub fn vault_clear_project_membership(
+    app: AppHandle,
+    project_id: String,
+) -> Result<(), CommandError> {
+    clear_project_membership(&app, project_id)
 }
 
 #[tauri::command]

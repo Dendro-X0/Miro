@@ -2,7 +2,7 @@
 
 import type { ReactElement } from "react";
 import { ImageIcon, MessageCircle } from "lucide-react";
-import type { AssistantMode } from "../../shell/types";
+import type { AssistantMode } from "../../../../shell/types";
 
 interface ChatHeroProps {
   readonly examples: readonly string[];

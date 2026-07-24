@@ -6,6 +6,7 @@ export interface VaultGalleryAsset {
   readonly dataUrl: string;
   readonly createdAt: number;
   readonly sessionId: string | null;
+  readonly projectId: string | null;
 }
 
 export interface VaultSessionSummary {
@@ -14,6 +15,7 @@ export interface VaultSessionSummary {
   readonly pinned: boolean;
   readonly createdAt: number;
   readonly updatedAt: number;
+  readonly projectId: string | null;
 }
 
 export interface VaultMessageRecord {

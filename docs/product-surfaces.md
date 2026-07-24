@@ -29,8 +29,8 @@ Main pane   → mode content
 | Content gen | In-thread image gen, vision attach, Gallery browse/delete, **ComfyUI localhost bridge** (curated txt2img) | img2img preset; Projects + Comfy presets |
 | Shell | Studio sidebar, Appearance, AI & keys | — |
 | Activity | Placeholder | Read-only feed: recent sessions + gallery thumbs |
-| Library / Projects | Gallery + chat list | Projects folders (roadmap) after Activity is useful |
-| Privacy | Desktop vault + keychain; web localStorage; backup | — |
+| Library / Projects | Gallery + chat list | **0.3a** Projects folders + scoped views |
+| Privacy | Desktop vault + keychain; web localStorage; backup | **0.3b** Node-less sidecar / release hardening |
 
 ## Component inventory
 
@@ -76,10 +76,11 @@ AI & keys, Agent, Appearance, Profile, Data & storage, About — utility only; n
 
 ## Implementation order
 
-1. Activity v1 feed (`activity-view.tsx` + shell wiring)
-2. Gallery deepen (reuse prompt / continue in Chat)
-3. Chat empty-state Text / Image compose chips
-4. Projects — only after 1–3 feel weekly-useful
+**Current band:** [Milestone 0.3](./milestone-0.3.md) (Projects + continuity · desktop hardening).
+
+Shipped earlier in this map: Activity feed, Gallery reuse, Text/Image compose chips, ComfyUI txt2img bridge.
+
+Next after 0.3: Projects deepen (per-project Comfy preset), then v2 items (prompt library, video) only if weekly use justifies.
 
 ## Related docs
 

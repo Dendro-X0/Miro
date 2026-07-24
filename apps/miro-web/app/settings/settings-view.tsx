@@ -128,7 +128,12 @@ export default function SettingsView(props: SettingsViewProps): ReactElement {
         )}
         {activeTab === "profile" && <ProfileCard profile={profile} onUpdate={onUpdate} />}
         {activeTab === "dataStorage" && (
-          <DataCard data={data} onUpdate={onUpdate} onReset={onReset} />
+          <DataCard
+            data={data}
+            projects={settings.projects}
+            onUpdate={onUpdate}
+            onReset={onReset}
+          />
         )}
         {activeTab === "about" && <AboutCard />}
       </div>

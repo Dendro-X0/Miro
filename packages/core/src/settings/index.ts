@@ -4,6 +4,7 @@ export {
   defaultAppearanceSettings,
   defaultDataSettings,
   defaultProfileSettings,
+  defaultProjectsSettings,
   defaultSettingsState,
   SETTINGS_STORAGE_KEY,
 } from "./defaults";

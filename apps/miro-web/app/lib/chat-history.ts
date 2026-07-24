@@ -3,7 +3,7 @@ import type { MiroBackupPayload } from "@miro/core";
 import { MIRO_BACKUP_VERSION } from "@miro/core";
 import { isTauriDesktop } from "./tauri-desktop";
 import * as vault from "./tauri-desktop";
-import { listGalleryAssets, replaceWebGallery } from "./gallery";
+import { listGalleryAssets, replaceWebGallery, clearGalleryProjectMembership } from "./gallery";
 
 const WEB_STORAGE_KEY = "miro-chat-history-v1";
 
@@ -12,6 +12,7 @@ export interface ChatSessionSummary {
   readonly title: string;
   readonly pinned: boolean;
   readonly updatedAt: number;
+  readonly projectId: string | null;
 }
 
 export interface ChatMessageRecord {
@@ -30,6 +31,7 @@ interface WebStore {
     readonly createdAt: number;
     readonly updatedAt: number;
     readonly instructions?: string;
+    readonly projectId?: string | null;
   }[];
   readonly messages: readonly {
     readonly id: string;
@@ -79,7 +81,13 @@ function writeWebStore(store: WebStore): void {
 }
 
 function sortSessions(
-  sessions: readonly { readonly id: string; readonly title: string; readonly pinned: boolean; readonly updatedAt: number }[],
+  sessions: readonly {
+    readonly id: string;
+    readonly title: string;
+    readonly pinned: boolean;
+    readonly updatedAt: number;
+    readonly projectId?: string | null;
+  }[],
 ): ChatSessionSummary[] {
   return [...sessions]
     .sort((a, b) => {
@@ -93,6 +101,7 @@ function sortSessions(
       title: session.title,
       pinned: session.pinned,
       updatedAt: session.updatedAt,
+      projectId: session.projectId ?? null,
     }));
 }
 
@@ -102,6 +111,7 @@ function fromVaultSession(session: VaultSessionSummary): ChatSessionSummary {
     title: session.title,
     pinned: session.pinned,
     updatedAt: session.updatedAt,
+    projectId: session.projectId ?? null,
   };
 }
 
@@ -136,9 +146,12 @@ export async function listChatSessions(): Promise<readonly ChatSessionSummary[]>
   return sortSessions(readWebStore().sessions);
 }
 
-export async function createChatSession(title = "New chat"): Promise<ChatSessionSummary> {
+export async function createChatSession(
+  title = "New chat",
+  projectId: string | null = null,
+): Promise<ChatSessionSummary> {
   if (isTauriDesktop()) {
-    return fromVaultSession(await vault.vaultCreateSession(title));
+    return fromVaultSession(await vault.vaultCreateSession(title, projectId));
   }
   const store = readWebStore();
   const stamp = now();
@@ -148,6 +161,7 @@ export async function createChatSession(title = "New chat"): Promise<ChatSession
     pinned: false,
     createdAt: stamp,
     updatedAt: stamp,
+    projectId,
   };
   writeWebStore({
     sessions: [session, ...store.sessions],
@@ -158,6 +172,7 @@ export async function createChatSession(title = "New chat"): Promise<ChatSession
     title: session.title,
     pinned: session.pinned,
     updatedAt: session.updatedAt,
+    projectId: session.projectId,
   };
 }
 
@@ -197,6 +212,7 @@ export async function renameChatSession(
     title: updated?.title ?? nextTitle,
     pinned: updated?.pinned ?? false,
     updatedAt: updated?.updatedAt ?? stamp,
+    projectId: updated?.projectId ?? null,
   };
 }
 
@@ -221,6 +237,7 @@ export async function pinChatSession(
     title: updated?.title ?? "Untitled chat",
     pinned: updated?.pinned ?? pinned,
     updatedAt: updated?.updatedAt ?? stamp,
+    projectId: updated?.projectId ?? null,
   };
 }
 
@@ -319,7 +336,30 @@ export async function truncateChatMessagesAfter(
   });
 }
 
-export async function exportBackupPayload(): Promise<MiroBackupPayload> {
+export async function clearProjectMembership(projectId: string): Promise<void> {
+  if (isTauriDesktop()) {
+    await vault.vaultClearProjectMembership(projectId);
+    return;
+  }
+  const store = readWebStore();
+  writeWebStore({
+    sessions: store.sessions.map((session) =>
+      session.projectId === projectId ? { ...session, projectId: null } : session,
+    ),
+    messages: store.messages,
+  });
+  await clearGalleryProjectMembership(projectId);
+}
+
+export async function exportBackupPayload(options?: {
+  readonly projects?: MiroBackupPayload["projects"];
+  readonly activeProjectId?: string | null;
+}): Promise<MiroBackupPayload> {
+  const projectsMeta = {
+    projects: options?.projects ?? [],
+    activeProjectId: options?.activeProjectId ?? null,
+  };
+
   if (isTauriDesktop()) {
     const payload = await vault.vaultExportBackup();
     return {
@@ -332,6 +372,7 @@ export async function exportBackupPayload(): Promise<MiroBackupPayload> {
         instructions: session.instructions,
         createdAt: session.createdAt,
         updatedAt: session.updatedAt,
+        projectId: session.projectId ?? null,
       })),
       messages: payload.messages.map((message) => ({
         id: message.id,
@@ -347,7 +388,9 @@ export async function exportBackupPayload(): Promise<MiroBackupPayload> {
         dataUrl: asset.dataUrl,
         sessionId: asset.sessionId,
         createdAt: asset.createdAt,
+        projectId: asset.projectId ?? null,
       })),
+      ...projectsMeta,
     };
   }
 
@@ -363,6 +406,7 @@ export async function exportBackupPayload(): Promise<MiroBackupPayload> {
       instructions: session.instructions ?? "",
       createdAt: session.createdAt,
       updatedAt: session.updatedAt,
+      projectId: session.projectId ?? null,
     })),
     messages: store.messages.map((message) => ({
       id: message.id,
@@ -378,7 +422,9 @@ export async function exportBackupPayload(): Promise<MiroBackupPayload> {
       dataUrl: asset.dataUrl,
       sessionId: asset.sessionId,
       createdAt: asset.createdAt,
+      projectId: asset.projectId ?? null,
     })),
+    ...projectsMeta,
   };
 }
 
@@ -394,6 +440,7 @@ export async function importBackupPayload(payload: MiroBackupPayload): Promise<v
         instructions: session.instructions ?? "",
         createdAt: session.createdAt,
         updatedAt: session.updatedAt,
+        projectId: session.projectId ?? null,
       })),
       messages: payload.messages.map((message) => ({
         id: message.id,
@@ -409,6 +456,7 @@ export async function importBackupPayload(payload: MiroBackupPayload): Promise<v
         dataUrl: asset.dataUrl,
         sessionId: asset.sessionId,
         createdAt: asset.createdAt,
+        projectId: asset.projectId ?? null,
       })),
     });
     return;
@@ -422,6 +470,7 @@ export async function importBackupPayload(payload: MiroBackupPayload): Promise<v
       instructions: session.instructions ?? "",
       createdAt: session.createdAt,
       updatedAt: session.updatedAt,
+      projectId: session.projectId ?? null,
     })),
     messages: payload.messages.map((message) => ({
       id: message.id,
@@ -439,6 +488,7 @@ export async function importBackupPayload(payload: MiroBackupPayload): Promise<v
       dataUrl: asset.dataUrl,
       sessionId: asset.sessionId,
       createdAt: asset.createdAt,
+      projectId: asset.projectId ?? null,
     })),
   );
 }

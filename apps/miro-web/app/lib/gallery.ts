@@ -42,13 +42,17 @@ export async function listGalleryAssets(): Promise<readonly GalleryAsset[]> {
   if (isTauriDesktop()) {
     return vaultListGallery();
   }
-  return readWebGallery();
+  return readWebGallery().map((asset) => ({
+    ...asset,
+    projectId: asset.projectId ?? null,
+  }));
 }
 
 export async function saveGalleryAsset(input: {
   readonly prompt: string;
   readonly dataUrl: string;
   readonly sessionId?: string | null;
+  readonly projectId?: string | null;
 }): Promise<GalleryAsset> {
   const mime = mimeFromDataUrl(input.dataUrl);
   if (isTauriDesktop()) {
@@ -57,6 +61,7 @@ export async function saveGalleryAsset(input: {
       mime,
       dataUrl: input.dataUrl,
       sessionId: input.sessionId,
+      projectId: input.projectId,
     });
   }
 
@@ -67,6 +72,7 @@ export async function saveGalleryAsset(input: {
     dataUrl: input.dataUrl,
     createdAt: Date.now(),
     sessionId: input.sessionId ?? null,
+    projectId: input.projectId ?? null,
   };
   const next = [asset, ...readWebGallery()].slice(0, WEB_GALLERY_MAX);
   writeWebGallery(next);
@@ -79,6 +85,17 @@ export async function deleteGalleryAsset(assetId: string): Promise<void> {
     return;
   }
   writeWebGallery(readWebGallery().filter((asset) => asset.id !== assetId));
+}
+
+export async function clearGalleryProjectMembership(projectId: string): Promise<void> {
+  if (isTauriDesktop()) {
+    return;
+  }
+  writeWebGallery(
+    readWebGallery().map((asset) =>
+      asset.projectId === projectId ? { ...asset, projectId: null } : asset,
+    ),
+  );
 }
 
 export function replaceWebGallery(assets: readonly GalleryAsset[]): void {

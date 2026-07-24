@@ -55,23 +55,28 @@ Artifacts land under `apps/miro-desktop/src-tauri/target/release/bundle/` (NSIS/
 | Step | What to verify |
 |------|----------------|
 | 1. Sidecar | `apps/miro-desktop/src-tauri/resources/miro-api/index.mjs` exists after `build:sidecar` |
-| 2. Static UI | `apps/miro-web/out/index.html` exists after `build:desktop` |
+| 2. Static UI | `apps/miro-web/out/index.html` exists after web export |
 | 3. Bundle | Installer appears under `src-tauri/target/release/bundle/` |
 | 4. Fresh install | Open app → vault unlocks → API health on `:8787` → one chat turn |
 | 5. Keys | Set BYOK in Settings; quit/relaunch; key still in OS keychain |
 | 6. Offline API | Quit app; confirm sidecar process exits (no orphan Node) |
+| 7. Node missing | Remove Node from PATH → clear `[miro-desktop]` spawn failure log |
+| 8. Projects (0.3a) | Create project → new chat scoped → switch Inbox |
+| 9. Image continuity (0.3a) | Chat on cloud provider; ComfyUI image still works |
 
 ### Release + API
 
-Desktop spawns the lean API on launch (bundled sidecar in release builds). Requires **Node.js on PATH** for the sidecar process. Set `MIRO_DESKTOP_SPAWN_API=0` to run your own API instance.
+Desktop spawns the lean API on launch (bundled sidecar in release builds). Requires **Node.js on PATH** for the sidecar process until SEA lands — see [`sidecar-strategy.md`](./sidecar-strategy.md). Set `MIRO_DESKTOP_SPAWN_API=0` to run your own API instance.
 
-**Known packaging gaps (intentional for now):**
+**Known packaging gaps (intentional for Milestone 0.3):**
 
 - Sidecar is ESM Node, not a single static binary — end users need Node on PATH
 - Installers are unsigned by default (SmartScreen / Gatekeeper warnings expected)
 - No auto-updater wired yet
 
-Future: fully static API binary without a Node dependency; optional signed CI artifacts.
+**Follow-up:** Node SEA (or equivalent) single executable; optional signed CI artifacts.
+
+PWA demo hosting (not E2EE): [`pwa-deploy.md`](./pwa-deploy.md).
 
 ## Signing (optional)
 
@@ -83,7 +88,7 @@ Unsigned builds are enough for local use and OSS contributors. Store / SmartScre
 | macOS | Apple Developer ID + notarization |
 | Linux | Often unsigned; optional GPG for package repos |
 
-Coffee-price Gumroad (or similar) distribution can ship **pre-signed** binaries while MIT source stays free. Signing is **not** required to mark Phase 2 packaging complete.
+Coffee-price Gumroad (or similar) distribution can ship **pre-signed** binaries while MIT source stays free. Signing is **not** required to mark Milestone 0.3b complete.
 
 ## Icons
 
@@ -104,6 +109,7 @@ Profile with CodaCtrl (or OS tools) against a release build. Targets from the ro
 | Chat fails / network error | Is `@miro/api` on `:8787`? `curl http://127.0.0.1:8787/health` |
 | Blank window after build | Confirm `apps/miro-web/out` exists; `frontendDist` must be `../miro-web/out` |
 | `pnpm` spawn fails | Install pnpm on PATH, or set `MIRO_DESKTOP_SPAWN_API=0` and start API manually |
+| Sidecar / `node` not found | Install [Node.js 20+](https://nodejs.org/); see `[miro-desktop]` logs. Or disable spawn — [`sidecar-strategy.md`](./sidecar-strategy.md) |
 | Keychain errors | OS credential store permissions; first-run may prompt |
 
 See also [`usage.md`](./usage.md) for AI env vars and [`architecture-modularity.md`](./architecture-modularity.md) for package boundaries.

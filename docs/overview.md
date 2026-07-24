@@ -18,6 +18,10 @@ Miro is a **private, local-first BYOK AI studio** — a modular client for text 
 | [Architecture modularity](./architecture-modularity.md) | Package boundaries |
 | [Frontend spec](./frontend-spec.md) | Settings UI contracts (AI & keys), sidebar shell |
 | [Product surfaces](./product-surfaces.md) | Workspace IA — Chat, Gallery, Activity, Create affordances |
+| [Milestone 0.3](./milestone-0.3.md) | Next cut: Projects + continuity · desktop hardening |
+| [Projects design](./projects-design.md) | 0.3a vault/settings contracts |
+| [Sidecar strategy](./sidecar-strategy.md) | 0.3b Node-less path |
+| [PWA deploy](./pwa-deploy.md) | Static demo hosting |
 
 ## Surfaces
 

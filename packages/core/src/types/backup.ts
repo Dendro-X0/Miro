@@ -1,4 +1,4 @@
-export const MIRO_BACKUP_VERSION = 1 as const;
+export const MIRO_BACKUP_VERSION = 2 as const;
 
 export interface MiroBackupSession {
   readonly id: string;
@@ -7,6 +7,7 @@ export interface MiroBackupSession {
   readonly instructions?: string;
   readonly createdAt: number;
   readonly updatedAt: number;
+  readonly projectId?: string | null;
 }
 
 export interface MiroBackupMessage {
@@ -24,14 +25,25 @@ export interface MiroBackupGalleryAsset {
   readonly dataUrl: string;
   readonly sessionId: string | null;
   readonly createdAt: number;
+  readonly projectId?: string | null;
+}
+
+export interface MiroBackupProject {
+  readonly id: string;
+  readonly name: string;
+  readonly createdAt: number;
+  readonly updatedAt: number;
+  readonly defaultComfyCheckpoint?: string | null;
 }
 
 export interface MiroBackupPayload {
-  readonly version: typeof MIRO_BACKUP_VERSION;
+  readonly version: 1 | 2 | typeof MIRO_BACKUP_VERSION;
   readonly exportedAt: number;
   readonly sessions: readonly MiroBackupSession[];
   readonly messages: readonly MiroBackupMessage[];
   readonly gallery: readonly MiroBackupGalleryAsset[];
+  readonly projects?: readonly MiroBackupProject[];
+  readonly activeProjectId?: string | null;
 }
 
 export interface MiroEncryptedBackupFile {

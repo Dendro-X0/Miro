@@ -1,6 +1,8 @@
 import type { AgentSettings } from "./agent";
+import type { ProjectsSettings } from "./project";
 
 export type { AgentSettings, MemoryEntry } from "./agent";
+export type { ProjectsSettings, WorkspaceProject } from "./project";
 
 export type ThemePreference = "system" | "light" | "dark";
 
@@ -34,14 +36,16 @@ export interface AiViewSettings {
   readonly selectedProviderId: string;
   readonly selectedModelId: string;
   readonly selectedImageModelId: string;
+  /** Empty string = follow selectedProviderId for image generation. */
+  readonly selectedImageProviderId: string;
+  /** Optional base URL for the image provider (e.g. ComfyUI :8188). */
+  readonly imageBaseUrl: string;
   readonly byokProvider: string | null;
   readonly byokKey: string;
   readonly byokLabel: string;
   readonly modelFilterTag: AiModelFilterTag | null;
   readonly customModels: readonly AiCustomModel[];
-  /** Applied to every chat unless overridden per session. */
   readonly defaultSystemPrompt: string;
-  /** Optional API base URL for BYOK gateways (OpenRouter, Groq, custom Ollama host, etc.). */
   readonly byokBaseUrl: string;
 }
 
@@ -55,6 +59,7 @@ export interface SettingsState {
   readonly appearance: AppearanceSettings;
   readonly aiView: AiViewSettings;
   readonly agent: AgentSettings;
+  readonly projects: ProjectsSettings;
   readonly data: DataSettings;
 }
 
@@ -63,5 +68,6 @@ export interface SettingsUpdateInput {
   readonly appearance?: Partial<AppearanceSettings>;
   readonly aiView?: Partial<AiViewSettings>;
   readonly agent?: Partial<AgentSettings>;
+  readonly projects?: Partial<ProjectsSettings>;
   readonly data?: Partial<DataSettings>;
 }

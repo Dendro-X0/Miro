@@ -4,11 +4,13 @@ import {
   defaultAppearanceSettings,
   defaultDataSettings,
   defaultProfileSettings,
+  defaultProjectsSettings,
 } from "./defaults";
 import type {
   AiViewSettings,
   AgentSettings,
   ProfileSettings,
+  ProjectsSettings,
   SettingsState,
   SettingsUpdateInput,
 } from "../types/settings";
@@ -69,12 +71,17 @@ export function parseStoredSettings(raw: string | null): SettingsState | null {
       record.agent as Partial<AgentSettings> | undefined,
       defaultAgentSettings,
     );
+    const projects = mergeSettingsSection(
+      defaultProjectsSettings,
+      record.projects as Partial<ProjectsSettings> | undefined,
+      defaultProjectsSettings,
+    );
     const data = mergeSettingsSection(
       defaultDataSettings,
       record.data as Partial<typeof defaultDataSettings> | undefined,
       defaultDataSettings,
     );
-    return { profile, appearance, aiView, agent, data };
+    return { profile, appearance, aiView, agent, projects, data };
   } catch {
     return null;
   }
@@ -106,6 +113,7 @@ export function applySettingsUpdate(
     ),
     aiView: mergeSettingsSection(previous.aiView, input.aiView, defaultAiViewSettings),
     agent: mergeSettingsSection(previous.agent, input.agent, defaultAgentSettings),
+    projects: mergeSettingsSection(previous.projects, input.projects, defaultProjectsSettings),
     data: mergeSettingsSection(previous.data, input.data, defaultDataSettings),
   };
 }

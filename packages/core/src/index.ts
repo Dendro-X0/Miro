@@ -34,11 +34,13 @@ export type {
   AppearanceSettings,
   DataSettings,
   ProfileSettings,
+  ProjectsSettings,
   SettingsState,
   SettingsUpdateInput,
   ThemePreference,
+  WorkspaceProject,
 } from "./types/settings";
-export type { MiroBackupGalleryAsset, MiroBackupMessage, MiroBackupPayload, MiroBackupSession, MiroEncryptedBackupFile } from "./types/backup";
+export type { MiroBackupGalleryAsset, MiroBackupMessage, MiroBackupPayload, MiroBackupProject, MiroBackupSession, MiroEncryptedBackupFile } from "./types/backup";
 export { MIRO_BACKUP_VERSION } from "./types/backup";
 export type { DesktopInfo, VaultGalleryAsset, VaultMessageRecord, VaultSessionSummary } from "./types/vault";
 export {
@@ -49,6 +51,7 @@ export {
   defaultAppearanceSettings,
   defaultDataSettings,
   defaultProfileSettings,
+  defaultProjectsSettings,
   defaultSettingsState,
   mergeSettingsSection,
   normalizeAiViewSettings,

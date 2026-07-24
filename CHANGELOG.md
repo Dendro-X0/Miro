@@ -24,10 +24,15 @@ All notable changes to this project will be documented in this file.
 
 ### Planned
 
+- **Milestone 0.3** — Projects + continuity; desktop release hardening ([`docs/milestone-0.3.md`](./docs/milestone-0.3.md))
 - Optional signed / coffee-price desktop binaries
-- ComfyUI localhost bridge (second image path)
+- Node-free (or Node-less UX) API sidecar for release installs
 - Production PWA deploy guide
-- Node-free API sidecar (no Node on PATH for release)
+
+### Shipped since 0.2.0 (studio band)
+
+- Studio sidebar, Appearance, Activity feed, Gallery reuse, voice STT, web search + memory
+- ComfyUI localhost txt2img bridge (`comfyui` settings source)
 
 ## [0.2.0] – 2026-07-21
 

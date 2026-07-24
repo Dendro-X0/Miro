@@ -19,12 +19,13 @@ import {
 
 interface DataCardProps {
   readonly data: SettingsState["data"];
+  readonly projects: SettingsState["projects"];
   readonly onUpdate: (input: SettingsUpdateInput) => void;
   readonly onReset: () => void;
 }
 
 export default function DataCard(props: DataCardProps): ReactElement {
-  const { data, onUpdate, onReset } = props;
+  const { data, projects, onUpdate, onReset } = props;
   const [cleared, setCleared] = useState(false);
   const [backupStatus, setBackupStatus] = useState<string | null>(null);
   const [backupBusy, setBackupBusy] = useState(false);
@@ -52,7 +53,16 @@ export default function DataCard(props: DataCardProps): ReactElement {
     setBackupBusy(true);
     setBackupStatus(null);
     try {
-      const payload = await exportBackupPayload();
+      const payload = await exportBackupPayload({
+        projects: projects.items.map((project) => ({
+          id: project.id,
+          name: project.name,
+          createdAt: project.createdAt,
+          updatedAt: project.updatedAt,
+          defaultComfyCheckpoint: project.defaultComfyCheckpoint ?? null,
+        })),
+        activeProjectId: projects.activeProjectId,
+      });
       const file = await encryptBackupPayload(payload, passphrase.trim());
       const stamp = new Date().toISOString().slice(0, 10);
       downloadBackupFile(`miro-backup-${stamp}.mirobackup.json`, file);
@@ -75,7 +85,7 @@ export default function DataCard(props: DataCardProps): ReactElement {
       return;
     }
     const confirmed = window.confirm(
-      "Import replaces all chats and gallery items on this device. Continue?",
+      "Import replaces all chats, gallery items, and projects on this device. Continue?",
     );
     if (!confirmed) {
       return;
@@ -86,6 +96,20 @@ export default function DataCard(props: DataCardProps): ReactElement {
       const encryptedFile = await readBackupFile(file);
       const payload = await decryptBackupPayload(encryptedFile, passphrase.trim());
       await importBackupPayload(payload);
+      if (payload.projects) {
+        onUpdate({
+          projects: {
+            items: payload.projects.map((project) => ({
+              id: project.id,
+              name: project.name,
+              createdAt: project.createdAt,
+              updatedAt: project.updatedAt,
+              defaultComfyCheckpoint: project.defaultComfyCheckpoint ?? null,
+            })),
+            activeProjectId: payload.activeProjectId ?? null,
+          },
+        });
+      }
       setBackupStatus("Backup imported. Reload the app to see restored chats.");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Backup import failed";
@@ -165,8 +189,8 @@ export default function DataCard(props: DataCardProps): ReactElement {
         <div className="mt-4 space-y-2 border-t border-surface pt-3 text-sm">
           <p className="text-sm font-semibold text-foreground">Encrypted backup</p>
           <p className="text-xs leading-relaxed">
-            Export or import chats and gallery as a passphrase-encrypted file. Works on desktop
-            vault and browser local storage.
+            Export or import chats, gallery, and projects as a passphrase-encrypted file. Works on
+            desktop vault and browser local storage.
           </p>
           <input
             ref={importInputRef}

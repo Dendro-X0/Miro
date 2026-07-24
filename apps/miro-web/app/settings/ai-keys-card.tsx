@@ -333,27 +333,33 @@ export default function AiKeysCard(props: AiKeysCardProps): ReactElement {
       (model) => model.providerId === nextSource.id && model.tags.includes("image"),
     );
     const nextModelId: string = firstModel?.id ?? selectedModelId;
-    const patch: Partial<SettingsState["aiView"]> = {
-      selectedProviderId: nextSource.id,
-      selectedModelId: nextModelId,
-      byokProvider: nextSource.id,
-    };
-    if (nextSource.id === "comfyui") {
-      if (!(aiView.byokBaseUrl ?? "").trim()) {
-        patch.byokBaseUrl = "http://127.0.0.1:8188";
-      }
-      if (firstImageModel) {
-        patch.selectedImageModelId = firstImageModel.id;
-      }
-    }
-    onUpdate({ aiView: patch });
+    onUpdate({
+      aiView: {
+        selectedProviderId: nextSource.id,
+        selectedModelId: nextModelId,
+        byokProvider: nextSource.id,
+        ...(nextSource.id === "comfyui"
+          ? {
+              byokBaseUrl: (aiView.byokBaseUrl ?? "").trim() || "http://127.0.0.1:8188",
+              selectedImageProviderId: "comfyui",
+              imageBaseUrl: (aiView.imageBaseUrl ?? "").trim() || "http://127.0.0.1:8188",
+              ...(firstImageModel ? { selectedImageModelId: firstImageModel.id } : {}),
+            }
+          : {}),
+      },
+    });
   }
 
   function handleSelectModel(nextModel: AiModelOption): void {
     const isTextModel: boolean = nextModel.tags.includes("text");
     const isImageModel: boolean = nextModel.tags.includes("image") && !isTextModel;
     if (isImageModel) {
-      onUpdate({ aiView: { selectedImageModelId: nextModel.id } });
+      onUpdate({
+        aiView: {
+          selectedImageModelId: nextModel.id,
+          selectedImageProviderId: nextModel.providerId,
+        },
+      });
       return;
     }
     onUpdate({ aiView: { selectedModelId: nextModel.id } });

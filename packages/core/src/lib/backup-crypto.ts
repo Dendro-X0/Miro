@@ -97,7 +97,7 @@ export async function decryptBackupPayload(
   } catch {
     throw new Error("Backup payload is not valid JSON");
   }
-  if (parsed.version !== MIRO_BACKUP_VERSION) {
+  if (parsed.version !== 1 && parsed.version !== MIRO_BACKUP_VERSION) {
     throw new Error("Unsupported backup version");
   }
   if (

@@ -50,7 +50,17 @@ Primary navigation and session browser for Miro Studio — a BYOK AI workspace f
 
 ### Out of scope
 
-- Collapsible icon-rail; Projects / Agents destinations; Gallery filter pane; Activity timeline in the sidebar
+- Collapsible icon-rail; Projects / Agents destinations as primary modes; Gallery filter pane; Activity timeline in the sidebar
+
+---
+
+## Shell: Projects (0.3a)
+
+See [`projects-design.md`](./projects-design.md).
+
+- Project picker under workspace brand (Inbox + named projects).
+- Sessions and gallery assets carry `projectId`; sidebar / Gallery / Activity filter by `settings.projects.activeProjectId`.
+- Image generation uses `selectedImageProviderId` + `imageBaseUrl` (may differ from chat provider).
 
 ---
 

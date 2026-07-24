@@ -68,6 +68,12 @@ export default function SidebarContent(props: SidebarContentProps): ReactElement
     galleryCount = 0,
     historyHint = "History off",
     providerReady,
+    projects,
+    activeProjectId,
+    onChangeActiveProject,
+    onCreateProject,
+    onRenameProject,
+    onDeleteProject,
   } = props;
   const [chatSearchQuery, setChatSearchQuery] = useState<string>("");
   const [openChatMenuId, setOpenChatMenuId] = useState<string | null>(null);
@@ -124,6 +130,69 @@ export default function SidebarContent(props: SidebarContentProps): ReactElement
           <UiKickerLabel text="Workspace" tone="muted" />
           <span className="truncate text-sm font-semibold text-foreground">{workspaceName}</span>
         </div>
+      </div>
+
+      <div className="mb-3 shrink-0 space-y-1.5">
+        <UiKickerLabel text="Project" tone="muted" />
+        <div className="flex items-center gap-1">
+          <select
+            value={activeProjectId ?? ""}
+            onChange={(event: ChangeEvent<HTMLSelectElement>): void => {
+              const value = event.target.value;
+              onChangeActiveProject(value.length > 0 ? value : null);
+            }}
+            className="h-8 min-w-0 flex-1 rounded-xl border border-surface bg-surface-muted px-2 text-xs text-foreground outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
+            aria-label="Active project"
+          >
+            <option value="">Inbox</option>
+            {projects.map((project) => (
+              <option key={project.id} value={project.id}>
+                {project.name}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={(): void => {
+              const name = window.prompt("New project name");
+              if (name && name.trim()) {
+                onCreateProject(name.trim());
+              }
+            }}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-sky-500/90 text-slate-950 hover:bg-sky-400"
+            aria-label="Create project"
+          >
+            <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+          </button>
+        </div>
+        {activeProjectId ? (
+          <div className="flex gap-1">
+            <button
+              type="button"
+              onClick={(): void => {
+                const current = projects.find((project) => project.id === activeProjectId);
+                const name = window.prompt("Rename project", current?.name ?? "");
+                if (name && name.trim()) {
+                  onRenameProject(activeProjectId, name.trim());
+                }
+              }}
+              className="rounded-full px-2 py-0.5 text-[10px] text-muted-foreground hover:bg-surface-panel hover:text-foreground"
+            >
+              Rename
+            </button>
+            <button
+              type="button"
+              onClick={(): void => {
+                if (window.confirm("Delete this project? Chats move to Inbox.")) {
+                  onDeleteProject(activeProjectId);
+                }
+              }}
+              className="rounded-full px-2 py-0.5 text-[10px] text-red-300 hover:bg-surface-panel"
+            >
+              Delete
+            </button>
+          </div>
+        ) : null}
       </div>
 
       <nav aria-label="Workspace modes" className="shrink-0 text-xs">

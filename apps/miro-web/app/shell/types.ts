@@ -16,11 +16,9 @@ export interface ChatInputBarProps {
   readonly sending: boolean;
   readonly onFocus?: () => void;
   readonly placeholder?: string;
-  /** Provider used for Whisper transcription (OpenAI-compatible). */
   readonly voiceProviderId?: string;
   readonly voiceByokKey?: string;
   readonly voiceBaseUrl?: string;
-  /** When `composeSeedKey` changes, apply `composeSeed` into the composer. */
   readonly composeSeed?: string;
   readonly composeSeedKey?: number;
 }
@@ -29,6 +27,12 @@ export interface SidebarChatSummary {
   readonly id: string;
   readonly title: string;
   readonly pinned: boolean;
+  readonly projectId: string | null;
+}
+
+export interface SidebarProjectSummary {
+  readonly id: string;
+  readonly name: string;
 }
 
 export interface ModelSwitcherOption {
@@ -61,12 +65,15 @@ export interface SidebarContentProps {
   readonly onTogglePinChat: (chatId: string) => void;
   readonly onRenameChat: (chatId: string, title: string) => void;
   readonly onDeleteChat: (chatId: string) => void;
-  /** Gallery asset count for contextual middle when Gallery is selected. */
   readonly galleryCount?: number;
-  /** History persistence status shown in the footer strip. */
   readonly historyHint?: string;
-  /** When true, footer can show that the AI provider is ready. */
   readonly providerReady?: boolean;
+  readonly projects: readonly SidebarProjectSummary[];
+  readonly activeProjectId: string | null;
+  readonly onChangeActiveProject: (projectId: string | null) => void;
+  readonly onCreateProject: (name: string) => void;
+  readonly onRenameProject: (projectId: string, name: string) => void;
+  readonly onDeleteProject: (projectId: string) => void;
 }
 
 export interface PlaceholderViewProps {

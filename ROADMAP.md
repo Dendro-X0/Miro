@@ -117,13 +117,24 @@ Only after the definition-of-done checklist is complete:
 
 - [x] Second image path (API + ComfyUI localhost bridge)
 - [x] Additional providers (Anthropic) with thin adapters; Google text already in golden path
-- [ ] **Projects** — encrypted folders grouping chats + assets + one ComfyUI preset
+- [ ] **Projects** — encrypted folders grouping chats + assets + one ComfyUI preset → **Milestone 0.3a**
 - [x] Export conversations (Markdown)
 - [x] System prompt / per-chat instructions
 - [x] Vision (image attach in chat for supported providers)
 - [x] Regenerate / edit last turn
 - [x] Encrypted backup export/import
-- [ ] Production PWA deploy guide (Vercel or static host)
+- [ ] Production PWA deploy guide (Vercel or static host) → **Milestone 0.3b**
+
+### Milestone 0.3 (locked)
+
+**Projects + continuity** and **desktop release hardening** in parallel. Full goals and DoD: [`docs/milestone-0.3.md`](./docs/milestone-0.3.md).
+
+| Lane | Focus |
+|------|--------|
+| **0.3a** | Projects CRUD, scoped Chat/Gallery/Activity, chat provider ≠ image provider continuity |
+| **0.3b** | Sidecar / Node-less release path, smoke checklist, signing notes, PWA deploy guide |
+
+Cut **0.3.0** when both lanes’ checklists are green.
 
 ---
 
@@ -175,16 +186,8 @@ miro-api (Hono)         — optional self-host; env-driven config for web demo
 
 ## Current priority
 
-**Next version focus: native Expo mobile** (`apps/miro-mobile`).
+**Milestone 0.3** — Projects + continuity **and** desktop release hardening (parallel). See [`docs/milestone-0.3.md`](./docs/milestone-0.3.md).
 
-Share `@miro/core` (API client, settings types) with web; rebuild the shell in React Native (not WebView). Desktop remains the privacy product.
+Desktop remains the privacy product. Expo mobile M1–3 are complete; further mobile polish only if used weekly.
 
-**Mobile milestones**
-
-1. Streaming chat + BYOK + sessions + model discovery + light markdown ✅
-2. Gallery / image gen, richer markdown, vision attach ✅
-3. Export / encrypted backup parity (Markdown share + `.mirobackup.json`) ✅
-
-Native Expo Milestones 1–3 are complete for the next-version band. Further polish (regenerate/edit, pin/rename) only if used weekly.
-
-**Also queued (only if used weekly):** ComfyUI bridge, production PWA deploy notes, signed installers, Node-free API sidecar.
+**Also queued after 0.3:** signed coffee-price binaries (optional), Comfy img2img deepen, prompt templates (v2).

@@ -25,6 +25,7 @@ import ChatErrorBanner from "./modules/ui/components/chat/chat-error-banner";
 import DesktopTitlebar from "./shell/desktop-titlebar";
 import { miroApi, getChatEndpoint } from "./lib/miro-api";
 import {
+  clearProjectMembership,
   createChatSession,
   deleteChatSession,
   getChatSessionInstructions,
@@ -80,7 +81,18 @@ function toSidebarChats(sessions: readonly ChatSessionSummary[]): readonly Sideb
     id: session.id,
     title: session.title,
     pinned: session.pinned,
+    projectId: session.projectId ?? null,
   }));
+}
+
+function matchesActiveProject(
+  projectId: string | null | undefined,
+  activeProjectId: string | null,
+): boolean {
+  if (activeProjectId === null) {
+    return projectId == null;
+  }
+  return projectId === activeProjectId;
 }
 
 export default function AppShell(props: AppShellProps): ReactElement {
@@ -116,8 +128,17 @@ export default function AppShell(props: AppShellProps): ReactElement {
   const byokKey: string = settings.aiView.byokKey;
   const byokBaseUrl: string = settings.aiView.byokBaseUrl ?? "";
   const selectedProviderId: string = settings.aiView.selectedProviderId || "google";
+  const selectedImageProviderId: string =
+    (settings.aiView.selectedImageProviderId ?? "").trim() || selectedProviderId;
+  const imageBaseUrl: string =
+    (settings.aiView.imageBaseUrl ?? "").trim() ||
+    (selectedImageProviderId === "comfyui"
+      ? "http://127.0.0.1:8188"
+      : byokBaseUrl);
   const defaultSystemPrompt: string = settings.aiView.defaultSystemPrompt ?? "";
   const agentSettings = settings.agent;
+  const projectsSettings = settings.projects;
+  const activeProjectId = projectsSettings.activeProjectId;
   const { switcherOptions, loading: catalogLoading, runtime: aiRuntime } = useAiModelCatalog(
     settings.aiView,
   );
@@ -140,6 +161,12 @@ export default function AppShell(props: AppShellProps): ReactElement {
   const activeSessionIdRef = useRef<string>("");
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const sessions = toSidebarChats(sessionSummaries);
+  const scopedSessions = sessions.filter((session) =>
+    matchesActiveProject(session.projectId, activeProjectId),
+  );
+  const scopedGalleryAssets = galleryAssets.filter((asset) =>
+    matchesActiveProject(asset.projectId, activeProjectId),
+  );
 
   function setActiveSession(sessionId: string): void {
     activeSessionIdRef.current = sessionId;
@@ -154,6 +181,10 @@ export default function AppShell(props: AppShellProps): ReactElement {
     const next = await listChatSessions();
     setSessionSummaries(next);
     return toSidebarChats(next);
+  }
+
+  async function createScopedChatSession(title = "New chat"): Promise<ChatSessionSummary> {
+    return createChatSession(title, activeProjectId);
   }
 
   function seedComposer(text: string, mode: AssistantMode = "image"): void {
@@ -280,7 +311,7 @@ export default function AppShell(props: AppShellProps): ReactElement {
           }
           return;
         }
-        const created = await createChatSession("New chat");
+        const created = await createScopedChatSession("New chat");
         if (cancelled) {
           return;
         }
@@ -339,7 +370,7 @@ export default function AppShell(props: AppShellProps): ReactElement {
       setMobileSidebarOpen(false);
       return;
     }
-    const created = await createChatSession("New chat");
+    const created = await createScopedChatSession("New chat");
     setSessionSummaries((previous) => [created, ...previous]);
     setActiveSession(created.id);
     setMessages([]);
@@ -409,7 +440,7 @@ export default function AppShell(props: AppShellProps): ReactElement {
       return;
     }
     if (persistHistory && !activeSessionIdRef.current) {
-      const created = await createChatSession("New chat");
+      const created = await createScopedChatSession("New chat");
       setSessionSummaries((previous) => [created, ...previous]);
       setActiveSession(created.id);
     }
@@ -429,7 +460,7 @@ export default function AppShell(props: AppShellProps): ReactElement {
     }
     const prompt = input.prompt.trim() || "What's in this image?";
     if (persistHistory && !activeSessionIdRef.current) {
-      const created = await createChatSession("New chat");
+      const created = await createScopedChatSession("New chat");
       setSessionSummaries((previous) => [created, ...previous]);
       setActiveSession(created.id);
     }
@@ -518,7 +549,7 @@ export default function AppShell(props: AppShellProps): ReactElement {
     if (!prompt.trim()) return;
 
     if (persistHistory && !activeSessionIdRef.current) {
-      const created = await createChatSession("New chat");
+      const created = await createScopedChatSession("New chat");
       setSessionSummaries((previous) => [created, ...previous]);
       setActiveSession(created.id);
     }
@@ -542,9 +573,9 @@ export default function AppShell(props: AppShellProps): ReactElement {
       const data = await miroApi.generateImage({
         prompt,
         model: imageModelId,
-        provider: selectedProviderId,
+        provider: selectedImageProviderId,
         byokKey: byokKey || undefined,
-        baseUrl: byokBaseUrl.trim() || undefined,
+        baseUrl: imageBaseUrl.trim() || undefined,
       });
       if (data.images.length > 0) {
         const imageUrl = data.images[0].url;
@@ -562,6 +593,7 @@ export default function AppShell(props: AppShellProps): ReactElement {
           prompt,
           dataUrl: imageUrl,
           sessionId: activeSessionIdRef.current || null,
+          projectId: activeProjectId,
         });
         await refreshGallery();
       }
@@ -592,16 +624,64 @@ export default function AppShell(props: AppShellProps): ReactElement {
         setView(nextView);
         setMobileSidebarOpen(false);
       }}
-      chats={sessions}
+      chats={scopedSessions}
       activeChatId={activeSessionId}
       onSelectChat={(chatId) => void handleSelectChat(chatId)}
       onNewChat={() => void handleNewChat()}
       onTogglePinChat={(chatId) => void handleTogglePinChat(chatId)}
       onRenameChat={(chatId, title) => void handleRenameChat(chatId, title)}
       onDeleteChat={(chatId) => void handleDeleteChat(chatId)}
-      galleryCount={galleryAssets.length}
+      galleryCount={scopedGalleryAssets.length}
       historyHint={historyHint}
       providerReady={providerReady}
+      projects={projectsSettings.items.map((project) => ({
+        id: project.id,
+        name: project.name,
+      }))}
+      activeProjectId={activeProjectId}
+      onChangeActiveProject={(projectId) =>
+        updateSettings({ projects: { activeProjectId: projectId } })
+      }
+      onCreateProject={(name) => {
+        const id = crypto.randomUUID();
+        const stamp = Date.now();
+        updateSettings({
+          projects: {
+            items: [
+              ...projectsSettings.items,
+              { id, name, createdAt: stamp, updatedAt: stamp },
+            ],
+            activeProjectId: id,
+          },
+        });
+      }}
+      onRenameProject={(projectId, name) => {
+        updateSettings({
+          projects: {
+            items: projectsSettings.items.map((project) =>
+              project.id === projectId
+                ? { ...project, name, updatedAt: Date.now() }
+                : project,
+            ),
+          },
+        });
+      }}
+      onDeleteProject={(projectId) => {
+        void (async () => {
+          await clearProjectMembership(projectId);
+          updateSettings({
+            projects: {
+              items: projectsSettings.items.filter((project) => project.id !== projectId),
+              activeProjectId:
+                projectsSettings.activeProjectId === projectId
+                  ? null
+                  : projectsSettings.activeProjectId,
+            },
+          });
+          await refreshSessions();
+          await refreshGallery();
+        })();
+      }}
     />
   );
 
@@ -808,7 +888,7 @@ export default function AppShell(props: AppShellProps): ReactElement {
           {view === "gallery" && (
             <div className="min-h-0 flex-1 overflow-hidden">
               <GalleryView
-                assets={galleryAssets}
+                assets={scopedGalleryAssets}
                 encrypted={isDesktopVault}
                 onDelete={(assetId) => void handleDeleteGalleryAsset(assetId)}
                 onReuseInChat={(prompt) => seedComposer(prompt, "image")}
@@ -823,8 +903,10 @@ export default function AppShell(props: AppShellProps): ReactElement {
           {view === "activity" && (
             <div className="min-h-0 flex-1 overflow-y-auto scroll-area chat-scroll-touch">
               <ActivityView
-                sessions={sessionSummaries}
-                assets={galleryAssets}
+                sessions={sessionSummaries.filter((session) =>
+                  matchesActiveProject(session.projectId, activeProjectId),
+                )}
+                assets={scopedGalleryAssets}
                 onOpenChat={(sessionId) => void handleSelectChat(sessionId)}
                 onOpenGallery={() => setView("gallery")}
                 onReuseImagePrompt={(prompt) => seedComposer(prompt, "image")}

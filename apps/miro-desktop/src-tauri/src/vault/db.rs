@@ -22,6 +22,7 @@ pub struct VaultSessionSummary {
     pub pinned: bool,
     pub created_at: i64,
     pub updated_at: i64,
+    pub project_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -33,6 +34,7 @@ pub struct VaultGalleryAsset {
     pub data_url: String,
     pub created_at: i64,
     pub session_id: Option<String>,
+    pub project_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -96,6 +98,17 @@ fn migrate_schema(conn: &Connection) -> Result<(), CommandError> {
     if !columns.iter().any(|name| name == "instructions_encrypted") {
         conn.execute("ALTER TABLE sessions ADD COLUMN instructions_encrypted BLOB", [])?;
     }
+    if !columns.iter().any(|name| name == "project_id") {
+        conn.execute("ALTER TABLE sessions ADD COLUMN project_id TEXT", [])?;
+    }
+
+    let mut gallery_stmt = conn.prepare("PRAGMA table_info(gallery_assets)")?;
+    let gallery_columns = gallery_stmt
+        .query_map([], |row| row.get::<_, String>(1))?
+        .collect::<Result<Vec<_>, _>>()?;
+    if !gallery_columns.iter().any(|name| name == "project_id") {
+        conn.execute("ALTER TABLE gallery_assets ADD COLUMN project_id TEXT", [])?;
+    }
     Ok(())
 }
 
@@ -128,7 +141,7 @@ pub fn list_sessions(app: &AppHandle) -> Result<Vec<VaultSessionSummary>, Comman
     let state = vault_state(app)?;
     let conn = state.conn.lock().map_err(|_| CommandError::Vault("vault lock poisoned".into()))?;
     let mut stmt = conn.prepare(
-        "SELECT id, title, pinned, created_at, updated_at FROM sessions ORDER BY pinned DESC, updated_at DESC",
+        "SELECT id, title, pinned, created_at, updated_at, project_id FROM sessions ORDER BY pinned DESC, updated_at DESC",
     )?;
     let rows = stmt.query_map([], |row| {
         Ok(VaultSessionSummary {
@@ -137,12 +150,17 @@ pub fn list_sessions(app: &AppHandle) -> Result<Vec<VaultSessionSummary>, Comman
             pinned: row.get::<_, i64>(2)? != 0,
             created_at: row.get(3)?,
             updated_at: row.get(4)?,
+            project_id: row.get(5)?,
         })
     })?;
     rows.collect::<Result<Vec<_>, _>>().map_err(CommandError::from)
 }
 
-pub fn create_session(app: &AppHandle, title: String) -> Result<VaultSessionSummary, CommandError> {
+pub fn create_session(
+    app: &AppHandle,
+    title: String,
+    project_id: Option<String>,
+) -> Result<VaultSessionSummary, CommandError> {
     let state = vault_state(app)?;
     let conn = state.conn.lock().map_err(|_| CommandError::Vault("vault lock poisoned".into()))?;
     let now = chrono_now();
@@ -153,9 +171,12 @@ pub fn create_session(app: &AppHandle, title: String) -> Result<VaultSessionSumm
     } else {
         trimmed.to_string()
     };
+    let project = project_id
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
     conn.execute(
-        "INSERT INTO sessions (id, title, pinned, created_at, updated_at) VALUES (?1, ?2, 0, ?3, ?3)",
-        params![id, session_title, now],
+        "INSERT INTO sessions (id, title, pinned, created_at, updated_at, project_id) VALUES (?1, ?2, 0, ?3, ?3, ?4)",
+        params![id, session_title, now, project],
     )?;
     Ok(VaultSessionSummary {
         id,
@@ -163,6 +184,7 @@ pub fn create_session(app: &AppHandle, title: String) -> Result<VaultSessionSumm
         pinned: false,
         created_at: now,
         updated_at: now,
+        project_id: project,
     })
 }
 
@@ -204,7 +226,7 @@ pub fn pin_session(app: &AppHandle, session_id: String, pinned: bool) -> Result<
 
 fn fetch_session(conn: &Connection, session_id: &str) -> Result<VaultSessionSummary, CommandError> {
     let mut stmt = conn.prepare(
-        "SELECT id, title, pinned, created_at, updated_at FROM sessions WHERE id = ?1",
+        "SELECT id, title, pinned, created_at, updated_at, project_id FROM sessions WHERE id = ?1",
     )?;
     stmt.query_row(params![session_id], |row| {
         Ok(VaultSessionSummary {
@@ -213,6 +235,7 @@ fn fetch_session(conn: &Connection, session_id: &str) -> Result<VaultSessionSumm
             pinned: row.get::<_, i64>(2)? != 0,
             created_at: row.get(3)?,
             updated_at: row.get(4)?,
+            project_id: row.get(5)?,
         })
     })
     .map_err(CommandError::from)
@@ -317,7 +340,7 @@ pub fn list_gallery_assets(app: &AppHandle) -> Result<Vec<VaultGalleryAsset>, Co
     let state = vault_state(app)?;
     let conn = state.conn.lock().map_err(|_| CommandError::Vault("vault lock poisoned".into()))?;
     let mut stmt = conn.prepare(
-        "SELECT id, prompt_encrypted, mime, data_encrypted, session_id, created_at FROM gallery_assets ORDER BY created_at DESC",
+        "SELECT id, prompt_encrypted, mime, data_encrypted, session_id, created_at, project_id FROM gallery_assets ORDER BY created_at DESC",
     )?;
     let rows = stmt.query_map([], |row| {
         Ok((
@@ -327,12 +350,13 @@ pub fn list_gallery_assets(app: &AppHandle) -> Result<Vec<VaultGalleryAsset>, Co
             row.get::<_, Vec<u8>>(3)?,
             row.get::<_, Option<String>>(4)?,
             row.get::<_, i64>(5)?,
+            row.get::<_, Option<String>>(6)?,
         ))
     })?;
 
     let mut assets = Vec::new();
     for row in rows {
-        let (id, prompt_encrypted, mime, data_encrypted, session_id, created_at) = row?;
+        let (id, prompt_encrypted, mime, data_encrypted, session_id, created_at, project_id) = row?;
         let prompt = state.cipher.decrypt(&prompt_encrypted)?;
         let data_url = state.cipher.decrypt(&data_encrypted)?;
         assets.push(VaultGalleryAsset {
@@ -342,6 +366,7 @@ pub fn list_gallery_assets(app: &AppHandle) -> Result<Vec<VaultGalleryAsset>, Co
             data_url,
             created_at,
             session_id,
+            project_id,
         });
     }
     Ok(assets)
@@ -353,6 +378,7 @@ pub fn save_gallery_asset(
     mime: String,
     data_url: String,
     session_id: Option<String>,
+    project_id: Option<String>,
 ) -> Result<VaultGalleryAsset, CommandError> {
     let state = vault_state(app)?;
     let conn = state.conn.lock().map_err(|_| CommandError::Vault("vault lock poisoned".into()))?;
@@ -365,15 +391,19 @@ pub fn save_gallery_asset(
     } else {
         mime
     };
+    let project = project_id
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
     conn.execute(
-        "INSERT INTO gallery_assets (id, prompt_encrypted, mime, data_encrypted, session_id, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        "INSERT INTO gallery_assets (id, prompt_encrypted, mime, data_encrypted, session_id, created_at, project_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
         params![
             id,
             prompt_encrypted,
             mime_value.clone(),
             data_encrypted,
             session_id.clone(),
-            now
+            now,
+            project.clone()
         ],
     )?;
     Ok(VaultGalleryAsset {
@@ -383,6 +413,7 @@ pub fn save_gallery_asset(
         data_url,
         created_at: now,
         session_id,
+        project_id: project,
     })
 }
 
@@ -423,6 +454,8 @@ pub struct VaultBackupSession {
     pub instructions: String,
     pub created_at: i64,
     pub updated_at: i64,
+    #[serde(default)]
+    pub project_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -444,6 +477,8 @@ pub struct VaultBackupGalleryAsset {
     pub data_url: String,
     pub session_id: Option<String>,
     pub created_at: i64,
+    #[serde(default)]
+    pub project_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -471,10 +506,11 @@ pub fn export_backup(app: &AppHandle) -> Result<VaultBackupPayload, CommandError
             instructions,
             created_at: session.created_at,
             updated_at: session.updated_at,
+            project_id: session.project_id,
         });
     }
     Ok(VaultBackupPayload {
-        version: 1,
+        version: 2,
         exported_at: chrono_now(),
         sessions: backup_sessions,
         messages: messages
@@ -496,13 +532,28 @@ pub fn export_backup(app: &AppHandle) -> Result<VaultBackupPayload, CommandError
                 data_url: asset.data_url,
                 session_id: asset.session_id,
                 created_at: asset.created_at,
+                project_id: asset.project_id,
             })
             .collect(),
     })
 }
 
+pub fn clear_project_membership(app: &AppHandle, project_id: String) -> Result<(), CommandError> {
+    let state = vault_state(app)?;
+    let conn = state.conn.lock().map_err(|_| CommandError::Vault("vault lock poisoned".into()))?;
+    conn.execute(
+        "UPDATE sessions SET project_id = NULL WHERE project_id = ?1",
+        params![project_id],
+    )?;
+    conn.execute(
+        "UPDATE gallery_assets SET project_id = NULL WHERE project_id = ?1",
+        params![project_id],
+    )?;
+    Ok(())
+}
+
 pub fn import_backup(app: &AppHandle, payload: VaultBackupPayload) -> Result<(), CommandError> {
-    if payload.version != 1 {
+    if payload.version != 1 && payload.version != 2 {
         return Err(CommandError::Vault("unsupported backup version".into()));
     }
     let state = vault_state(app)?;
@@ -522,14 +573,15 @@ pub fn import_backup(app: &AppHandle, payload: VaultBackupPayload) -> Result<(),
             Some(state.cipher.encrypt(session.instructions.trim())?)
         };
         tx.execute(
-            "INSERT INTO sessions (id, title, pinned, created_at, updated_at, instructions_encrypted) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            "INSERT INTO sessions (id, title, pinned, created_at, updated_at, instructions_encrypted, project_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             params![
                 session.id,
                 session.title,
                 if session.pinned { 1 } else { 0 },
                 session.created_at,
                 session.updated_at,
-                instructions_encrypted
+                instructions_encrypted,
+                session.project_id
             ],
         )?;
     }
@@ -546,14 +598,15 @@ pub fn import_backup(app: &AppHandle, payload: VaultBackupPayload) -> Result<(),
         let prompt_encrypted = state.cipher.encrypt(&asset.prompt)?;
         let data_encrypted = state.cipher.encrypt(&asset.data_url)?;
         tx.execute(
-            "INSERT INTO gallery_assets (id, prompt_encrypted, mime, data_encrypted, session_id, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            "INSERT INTO gallery_assets (id, prompt_encrypted, mime, data_encrypted, session_id, created_at, project_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             params![
                 asset.id,
                 prompt_encrypted,
                 asset.mime,
                 data_encrypted,
                 asset.session_id,
-                asset.created_at
+                asset.created_at,
+                asset.project_id
             ],
         )?;
     }

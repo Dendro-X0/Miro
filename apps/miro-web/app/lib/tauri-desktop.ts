@@ -51,8 +51,14 @@ export async function vaultListSessions(): Promise<readonly VaultSessionSummary[
   return invoke<readonly VaultSessionSummary[]>("vault_list_sessions");
 }
 
-export async function vaultCreateSession(title: string): Promise<VaultSessionSummary> {
-  return invoke<VaultSessionSummary>("vault_create_session", { title });
+export async function vaultCreateSession(
+  title: string,
+  projectId?: string | null,
+): Promise<VaultSessionSummary> {
+  return invoke<VaultSessionSummary>("vault_create_session", {
+    title,
+    projectId: projectId ?? null,
+  });
 }
 
 export async function vaultDeleteSession(sessionId: string): Promise<void> {
@@ -119,6 +125,7 @@ export interface VaultBackupPayload {
     readonly instructions: string;
     readonly createdAt: number;
     readonly updatedAt: number;
+    readonly projectId?: string | null;
   }[];
   readonly messages: readonly VaultMessageRecord[];
   readonly gallery: readonly VaultGalleryAsset[];
@@ -141,17 +148,23 @@ export async function vaultSaveGalleryAsset(input: {
   readonly mime: string;
   readonly dataUrl: string;
   readonly sessionId?: string | null;
+  readonly projectId?: string | null;
 }): Promise<VaultGalleryAsset> {
   return invoke<VaultGalleryAsset>("vault_save_gallery_asset", {
     prompt: input.prompt,
     mime: input.mime,
     dataUrl: input.dataUrl,
     sessionId: input.sessionId ?? null,
+    projectId: input.projectId ?? null,
   });
 }
 
 export async function vaultDeleteGalleryAsset(assetId: string): Promise<void> {
   return invoke<void>("vault_delete_gallery_asset", { assetId });
+}
+
+export async function vaultClearProjectMembership(projectId: string): Promise<void> {
+  return invoke<void>("vault_clear_project_membership", { projectId });
 }
 
 export async function keychainSetSecret(account: string, secret: string): Promise<void> {

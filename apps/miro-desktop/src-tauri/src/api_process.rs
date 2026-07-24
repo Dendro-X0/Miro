@@ -162,7 +162,7 @@ pub fn spawn_api_process(app: &AppHandle) {
         }
         None => {
             eprintln!(
-                "[miro-desktop] failed to spawn @miro/api. Install Node.js or run: pnpm dev --filter @miro/api"
+                "[miro-desktop] failed to spawn @miro/api. Install Node.js 20+ on PATH (required for the bundled sidecar), or run: pnpm --filter @miro/api dev. See docs/sidecar-strategy.md"
             );
             app.manage(ApiProcessState {
                 child: Mutex::new(None),
